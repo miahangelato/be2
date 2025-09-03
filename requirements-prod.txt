@@ -12,7 +12,7 @@ gunicorn==21.2.0
 psycopg2-binary==2.9.7
 dj-database-url==2.1.0
 
-# ML and AI
+# ML and AI core
 tensorflow==2.20.0
 keras==3.11.2
 scikit-learn==1.4.2
@@ -45,3 +45,8 @@ pytz==2025.2
 # Additional ML dependencies
 matplotlib==3.7.5
 scipy==1.11.4
+
+# Basic Python packages
+asgiref==3.9.1
+sqlparse==0.5.3
+tzdata==2025.2

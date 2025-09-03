@@ -1,0 +1,15 @@
+# Ignore local development files
+*.pyc
+__pycache__/
+.env.local
+.venv/
+venv/
+*.log
+.DS_Store
+core/*.h5
+media/
+static/static_root/
+
+# Ignore Windows-specific files
+*.exe
+*.dll
