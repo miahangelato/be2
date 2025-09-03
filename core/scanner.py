@@ -4,6 +4,7 @@ import time
 import sys
 import logging
 import traceback
+import platform
 
 # Set up detailed logging
 logging.basicConfig(
@@ -15,6 +16,9 @@ logging.basicConfig(
     ]
 )
 logger = logging.getLogger(__name__)
+
+# Check if we're on Windows - fingerprint scanner only works on Windows
+IS_WINDOWS = platform.system() == 'Windows'
 
 def log_error_with_traceback(e: Exception, prefix: str = "Error"):
     """Helper function to log errors with full traceback"""
@@ -58,15 +62,20 @@ DPFJ_DLL_PATH = find_dll("dpfj.dll")
 
 # --- ctypes Definitions for dpfpdd.dll ---
 
-try:
-    dpfpdd = ctypes.WinDLL(DPFPDD_DLL_PATH)
-except OSError as e:
-    print(f"Failed to load {DPFPDD_DLL_PATH}: {e}")
-    print("Ensure the SDK is installed and its DLLs are accessible or in system PATH.")
-    print(f"Attempted DPFPDD_DLL_PATH: {DPFPDD_DLL_PATH}")
-    sys.exit(1)
+if IS_WINDOWS:
+    try:
+        dpfpdd = ctypes.WinDLL(DPFPDD_DLL_PATH)
+    except OSError as e:
+        print(f"Failed to load {DPFPDD_DLL_PATH}: {e}")
+        print("Ensure the SDK is installed and its DLLs are accessible or in system PATH.")
+        print(f"Attempted DPFPDD_DLL_PATH: {DPFPDD_DLL_PATH}")
+        sys.exit(1)
+else:
+    # On non-Windows systems, create dummy objects
+    logger.warning("Running on non-Windows system. Fingerprint scanner functionality disabled.")
+    dpfpdd = None
 
-# Define common types
+# Define common types (these work on all platforms)
 DPFPDD_STATUS = ctypes.c_int
 DPFPDD_DEV = ctypes.c_void_p
 
@@ -504,10 +513,15 @@ if __name__ == "__main__":
     else:
         print("Fingerprint capture failed.")
 
+# Windows-specific imports
+if IS_WINDOWS:
+    import win32com.client
+    import pythoncom
+else:
+    # Dummy modules for non-Windows systems
+    win32com = None
+    pythoncom = None
 
-
-import win32com.client
-import pythoncom
 import time
 import numpy as np
 from PIL import Image
@@ -521,9 +535,17 @@ logger = logging.getLogger(__name__)
 class FingerprintScanner:
     def __init__(self):
         self.device = None
-        self._initialize_reader()
+        if IS_WINDOWS:
+            self._initialize_reader()
+        else:
+            logger.warning("FingerprintScanner: Running on non-Windows system. Scanner functionality disabled.")
+            self.device = None
 
     def _initialize_reader(self):
+        if not IS_WINDOWS:
+            logger.error("Fingerprint reader only supported on Windows systems")
+            return False
+            
         try:
             logger.debug("Starting fingerprint reader initialization...")
             
@@ -597,6 +619,9 @@ class FingerprintScanner:
             raise
 
     def capture_fingerprint(self):
+        if not IS_WINDOWS:
+            raise Exception("Fingerprint capture is only supported on Windows systems")
+            
         if not self.device:
             error_msg = "Scanner not initialized. Please check device connection."
             logger.error(error_msg)
