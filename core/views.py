@@ -22,11 +22,11 @@ api = NinjaAPI()
 @api.get("/health/")
 def health_check(request):
     """
-    Health check endpoint that ensures models are loaded
-    Use this to warm up the application after deployment
+    Simple health check endpoint for Railway deployment
+    Does not trigger model downloads to avoid timeouts
     """
     try:
-        # Check if models are cached locally
+        # Check if models are cached locally (don't download)
         fingerprint_cache = os.path.join(settings.BASE_DIR, "core", "improved_pattern_cnn_model.h5")
         bloodgroup_cache = os.path.join(settings.BASE_DIR, "core", "bloodgroup_model_20250823-140933.h5")
         
@@ -35,22 +35,10 @@ def health_check(request):
             "bloodgroup_model_cached": os.path.exists(bloodgroup_cache),
         }
         
-        # Try to load models to ensure they work (this will download if not cached)
-        if not models_status["fingerprint_model_cached"]:
-            logger.info("Fingerprint model not cached, triggering download...")
-            from .fingerprint_classifier_utils import model  # This will download and cache
-            models_status["fingerprint_model_cached"] = True
-            
-        if not models_status["bloodgroup_model_cached"]:
-            logger.info("Blood group model not cached, triggering download...")
-            from .bloodgroup_classifier import BloodGroupClassifier
-            classifier = BloodGroupClassifier()  # This will download and cache
-            models_status["bloodgroup_model_cached"] = True
-        
         return {
             "status": "healthy",
             "models": models_status,
-            "message": "All models loaded and ready"
+            "message": "Application is running"
         }
         
     except Exception as e:
@@ -58,7 +46,7 @@ def health_check(request):
         return JsonResponse({
             "status": "unhealthy",
             "error": str(e),
-            "message": "Models not ready"
+            "message": "Application not ready"
         }, status=503)
 
 @api.post("/identify-blood-group-from-participant/")
