@@ -49,6 +49,29 @@ def health_check(request):
             "message": "Application not ready"
         }, status=503)
 
+@api.get("/debug/")
+def debug_info(request):
+    """
+    Debug endpoint to check environment and setup
+    """
+    import os
+    return {
+        "env_vars": {
+            "DEBUG": os.getenv('DEBUG'),
+            "RAILWAY_DEPLOYMENT": os.getenv('RAILWAY_DEPLOYMENT'),
+            "DATABASE_URL_exists": bool(os.getenv('DATABASE_URL')),
+            "PORT": os.getenv('PORT'),
+        },
+        "paths": {
+            "BASE_DIR": str(settings.BASE_DIR),
+            "working_dir": os.getcwd(),
+        },
+        "django": {
+            "DEBUG": settings.DEBUG,
+            "ALLOWED_HOSTS": settings.ALLOWED_HOSTS,
+        }
+    }
+
 @api.post("/identify-blood-group-from-participant/")
 def identify_blood_group_from_participant(request, participant_id: int = Query(...)):
     """

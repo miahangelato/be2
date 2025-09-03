@@ -47,7 +47,13 @@ ALLOWED_HOSTS = [
     '.herokuapp.com',  # Allow all Heroku subdomains
     '.ngrok-free.app',  # For development testing
     '.ngrok.io',  # For development testing
+    '.railway.app',  # Allow all Railway subdomains
+    '.railway.internal',  # Railway internal networking
 ]
+
+# Add Railway deployment URL if available
+if os.getenv('RAILWAY_PUBLIC_DOMAIN'):
+    ALLOWED_HOSTS.append(os.getenv('RAILWAY_PUBLIC_DOMAIN'))
 
 # Add your specific Heroku app domain when you create it
 # ALLOWED_HOSTS.append('your-app-name.herokuapp.com')
