@@ -1,0 +1,11 @@
+[build]
+builder = "nixpacks"
+buildCommand = "python -m pip install --upgrade pip && pip install -r requirements.txt"
+
+[deploy]
+startCommand = "python manage.py migrate && gunicorn backend.wsgi"
+healthcheckPath = "/admin/login/"
+healthcheckTimeout = 100
+
+[environments]
+production.packageOverrides = ["python311", "libgl1-mesa-glx", "libglib2.0-0"]
