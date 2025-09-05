@@ -230,33 +230,33 @@ STORAGES = {
 }
 
 
-# Security Settings - Enhanced for Production
-SECURE_SSL_REDIRECT = not DEBUG and not os.getenv('DISABLE_SSL_REDIRECT')  # Allow disabling for testing
-SECURE_HSTS_SECONDS = 31536000 if not DEBUG else 0  # 1 year HSTS
-SECURE_HSTS_INCLUDE_SUBDOMAINS = not DEBUG
-SECURE_HSTS_PRELOAD = not DEBUG
-SECURE_CONTENT_TYPE_NOSNIFF = True
-SECURE_BROWSER_XSS_FILTER = True
-X_FRAME_OPTIONS = 'DENY'
-SECURE_REFERRER_POLICY = 'strict-origin-when-cross-origin'
+# # Security Settings - Enhanced for Production
+# SECURE_SSL_REDIRECT = not DEBUG and not os.getenv('DISABLE_SSL_REDIRECT')  # Allow disabling for testing
+# SECURE_HSTS_SECONDS = 31536000 if not DEBUG else 0  # 1 year HSTS
+# SECURE_HSTS_INCLUDE_SUBDOMAINS = not DEBUG
+# SECURE_HSTS_PRELOAD = not DEBUG
+# SECURE_CONTENT_TYPE_NOSNIFF = True
+# SECURE_BROWSER_XSS_FILTER = True
+# X_FRAME_OPTIONS = 'DENY'
+# SECURE_REFERRER_POLICY = 'strict-origin-when-cross-origin'
 
-# Force HTTPS proxy headers (required for Heroku)
-SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
+# # Force HTTPS proxy headers (required for Heroku)
+# SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
 
-# Trust Heroku's proxy
-USE_X_FORWARDED_HOST = True
-USE_X_FORWARDED_PORT = True
+# # Trust Heroku's proxy
+# USE_X_FORWARDED_HOST = True
+# USE_X_FORWARDED_PORT = True
 
-# Session Security
-SESSION_COOKIE_SECURE = not DEBUG  # HTTPS only in production
-SESSION_COOKIE_HTTPONLY = True
-SESSION_COOKIE_AGE = 3600  # 1 hour
-SESSION_EXPIRE_AT_BROWSER_CLOSE = True
+# # Session Security
+# SESSION_COOKIE_SECURE = not DEBUG  # HTTPS only in production
+# SESSION_COOKIE_HTTPONLY = True
+# SESSION_COOKIE_AGE = 3600  # 1 hour
+# SESSION_EXPIRE_AT_BROWSER_CLOSE = True
 
-# CSRF Protection
-CSRF_COOKIE_SECURE = not DEBUG  # HTTPS only in production
-CSRF_COOKIE_HTTPONLY = True
-CSRF_USE_SESSIONS = True
+# # CSRF Protection
+# CSRF_COOKIE_SECURE = not DEBUG  # HTTPS only in production
+# CSRF_COOKIE_HTTPONLY = True
+# CSRF_USE_SESSIONS = True
 
 # File Upload Security
 FILE_UPLOAD_MAX_MEMORY_SIZE = 10 * 1024 * 1024  # 10MB
@@ -264,20 +264,35 @@ DATA_UPLOAD_MAX_MEMORY_SIZE = 10 * 1024 * 1024  # 10MB
 FILE_UPLOAD_PERMISSIONS = 0o644
 DATA_UPLOAD_MAX_NUMBER_FIELDS = 100
 
+# =====================================================
+# 🌍 CORS & CSRF CONFIGURATION
+# =====================================================
+
+# Allow credentials (cookies, auth headers) across origins
+CORS_ALLOW_CREDENTIALS = True
+
+# Explicitly allowed origins (frontend + backend domains)
 CORS_ALLOWED_ORIGINS = [
     "http://localhost:3000",
-    "https://localhost:3000",  # just in case
+    "https://localhost:3000",
     "https://be2-production.up.railway.app",
 ]
 
-CORS_ALLOW_CREDENTIALS = True
+# CSRF protection for same origins
+CSRF_TRUSTED_ORIGINS = [
+    "http://localhost:3000",
+    "https://be2-production.up.railway.app",
+]
 
+# Allowed headers (extend default)
 CORS_ALLOW_HEADERS = list(default_headers) + [
     "content-type",
     "authorization",
 ]
 
+# Allowed methods (extend default)
 CORS_ALLOW_METHODS = list(default_methods)
+
 
 
 # Production CORS settings (commented out for debugging)
