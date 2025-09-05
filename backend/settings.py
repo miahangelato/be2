@@ -177,10 +177,9 @@ AWS_LOCATION = 'static'
 AWS_MEDIA_LOCATION = 'media'
 
 STATIC_URL = 'static/'
-STATICFILES_DIRS = [
-    BASE_DIR / "static_my_project",
-]
-STATIC_ROOT = os.path.join(BASE_DIR, 'static', 'static_root')
+# Remove non-existent static directory for Railway deployment
+STATICFILES_DIRS = []
+STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')
 
 MEDIA_URL = 'media/'
 MEDIA_ROOT = os.path.join(BASE_DIR, 'media', 'media_root')
