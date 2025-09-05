@@ -4,8 +4,6 @@ buildCommand = "python -m pip install --upgrade pip && pip install --no-cache-di
 
 [deploy]
 startCommand = "python startup.py"
-healthcheckPath = "/api/core/health/"
-healthcheckTimeout = 300
 restartPolicyType = "on_failure"
 restartPolicyMaxRetries = 3
 
