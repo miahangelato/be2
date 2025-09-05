@@ -42,13 +42,7 @@ DEBUG = os.getenv('DEBUG', 'False').lower() == 'true'
 
 # Secure ALLOWED_HOSTS for production
 ALLOWED_HOSTS = [
-    'localhost',
-    '127.0.0.1',
-    '.herokuapp.com',  # Allow all Heroku subdomains
-    '.ngrok-free.app',  # For development testing
-    '.ngrok.io',  # For development testing
-    '.up.railway.app',  # Allow all Railway subdomains
-    'be2-production.up.railway.app',  # Your specific Railway domain
+    '*',
 ]
 
 # Add your specific Heroku app domain when you create it
@@ -167,9 +161,6 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 
 
-CORS_ALLOW_CREDENTIALS = True
-
-
 AWS_LOCATION = 'static'
 AWS_MEDIA_LOCATION = 'media'
 
@@ -272,8 +263,15 @@ DATA_UPLOAD_MAX_MEMORY_SIZE = 10 * 1024 * 1024  # 10MB
 FILE_UPLOAD_PERMISSIONS = 0o644
 DATA_UPLOAD_MAX_NUMBER_FIELDS = 100
 
-CORS_ALLOW_ALL_ORIGINS = True  # Temporarily allow all origins for debugging
+CORS_ALLOWED_ORIGINS = [
+    "http://localhost:3000",
+    "https://be2-production.up.railway.app",
+]
+
 CORS_ALLOW_CREDENTIALS = True
+CORS_ALLOW_HEADERS = ["*"]
+CORS_ALLOW_METHODS = ["*"]
+
 
 # Production CORS settings (commented out for debugging)
 # if not DEBUG:
