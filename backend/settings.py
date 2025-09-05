@@ -264,34 +264,77 @@ DATA_UPLOAD_MAX_MEMORY_SIZE = 10 * 1024 * 1024  # 10MB
 FILE_UPLOAD_PERMISSIONS = 0o644
 DATA_UPLOAD_MAX_NUMBER_FIELDS = 100
 
+# CSRF Settings for CORS compatibility
+CSRF_COOKIE_HTTPONLY = False  # Allow JS access to CSRF token
+CSRF_USE_SESSIONS = False  # Use cookie-based CSRF tokens
+CSRF_COOKIE_SAMESITE = 'Lax'  # Allow cross-site requests
+CSRF_COOKIE_SECURE = False  # Allow over HTTP for development
+
 # =====================================================
-# 🌍 CORS & CSRF CONFIGURATION
+# 🌍 CORS & CSRF CONFIGURATION - COMPREHENSIVE SOLUTION
 # =====================================================
+
+# Allow all origins for development (temporary fix)
+CORS_ALLOW_ALL_ORIGINS = True
 
 # Allow credentials (cookies, auth headers) across origins
 CORS_ALLOW_CREDENTIALS = True
 
-# Explicitly allowed origins (frontend + backend domains)
+# Explicitly allowed origins (for production use)
 CORS_ALLOWED_ORIGINS = [
     "http://localhost:3000",
-    "https://localhost:3000",
+    "https://localhost:3000", 
+    "http://127.0.0.1:3000",
+    "https://127.0.0.1:3000",
     "https://be2-production.up.railway.app",
 ]
 
 # CSRF protection for same origins
 CSRF_TRUSTED_ORIGINS = [
     "http://localhost:3000",
+    "https://localhost:3000",
+    "http://127.0.0.1:3000", 
+    "https://127.0.0.1:3000",
     "https://be2-production.up.railway.app",
 ]
 
-# Allowed headers (extend default)
-CORS_ALLOW_HEADERS = list(default_headers) + [
-    "content-type",
-    "authorization",
+# Comprehensive list of allowed headers
+CORS_ALLOW_HEADERS = [
+    'accept',
+    'accept-encoding',
+    'authorization',
+    'content-type',
+    'dnt',
+    'origin',
+    'user-agent',
+    'x-csrftoken',
+    'x-requested-with',
+    'cache-control',
+    'pragma',
+    'if-modified-since',
 ]
 
-# Allowed methods (extend default)
-CORS_ALLOW_METHODS = list(default_methods)
+# Comprehensive list of allowed methods
+CORS_ALLOW_METHODS = [
+    'DELETE',
+    'GET',
+    'OPTIONS',
+    'PATCH',
+    'POST',
+    'PUT',
+]
+
+# Expose headers to the frontend
+CORS_EXPOSE_HEADERS = [
+    'content-type',
+    'x-csrftoken',
+]
+
+# Preflight cache age
+CORS_PREFLIGHT_MAX_AGE = 86400
+
+# Allow unsafe URLs
+CORS_URLS_REGEX = r'^.*$'
 
 
 
