@@ -11,7 +11,6 @@ https://docs.djangoproject.com/en/5.2/ref/settings/
 """
 
 from pathlib import Path
-from corsheaders.defaults import default_headers, default_methods
 import os
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
@@ -43,8 +42,18 @@ DEBUG = os.getenv('DEBUG', 'False').lower() == 'true'
 
 # Secure ALLOWED_HOSTS for production
 ALLOWED_HOSTS = [
-    '*',
+    'localhost',
+    '127.0.0.1',
+    '.herokuapp.com',  # Allow all Heroku subdomains
+    '.ngrok-free.app',  # For development testing
+    '.ngrok.io',  # For development testing
+    '.railway.app',  # Allow all Railway subdomains
+    '.railway.internal',  # Railway internal networking
 ]
+
+# Add Railway deployment URL if available
+if os.getenv('RAILWAY_PUBLIC_DOMAIN'):
+    ALLOWED_HOSTS.append(os.getenv('RAILWAY_PUBLIC_DOMAIN'))
 
 # Add your specific Heroku app domain when you create it
 # ALLOWED_HOSTS.append('your-app-name.herokuapp.com')
@@ -70,10 +79,9 @@ INSTALLED_APPS = [
 MIDDLEWARE = [
     'corsheaders.middleware.CorsMiddleware',
     'django.middleware.security.SecurityMiddleware',
-    'whitenoise.middleware.WhiteNoiseMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
-    # 'django.middleware.csrf.CsrfViewMiddleware',  # Temporarily disabled for debugging
+    'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
@@ -162,14 +170,16 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 
 
+CORS_ALLOW_CREDENTIALS = True
+
+
 AWS_LOCATION = 'static'
 AWS_MEDIA_LOCATION = 'media'
 
 STATIC_URL = 'static/'
-STATICFILES_DIRS = [
-    BASE_DIR / "static_my_project",
-]
-STATIC_ROOT = os.path.join(BASE_DIR, 'static', 'static_root')
+# Remove non-existent static directory for Railway deployment
+STATICFILES_DIRS = []
+STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')
 
 MEDIA_URL = 'media/'
 MEDIA_ROOT = os.path.join(BASE_DIR, 'media', 'media_root')
@@ -230,33 +240,33 @@ STORAGES = {
 }
 
 
-# # Security Settings - Enhanced for Production
-# SECURE_SSL_REDIRECT = not DEBUG and not os.getenv('DISABLE_SSL_REDIRECT')  # Allow disabling for testing
-# SECURE_HSTS_SECONDS = 31536000 if not DEBUG else 0  # 1 year HSTS
-# SECURE_HSTS_INCLUDE_SUBDOMAINS = not DEBUG
-# SECURE_HSTS_PRELOAD = not DEBUG
-# SECURE_CONTENT_TYPE_NOSNIFF = True
-# SECURE_BROWSER_XSS_FILTER = True
-# X_FRAME_OPTIONS = 'DENY'
-# SECURE_REFERRER_POLICY = 'strict-origin-when-cross-origin'
+# Security Settings - Enhanced for Production
+SECURE_SSL_REDIRECT = not DEBUG and not os.getenv('DISABLE_SSL_REDIRECT')  # Allow disabling for testing
+SECURE_HSTS_SECONDS = 31536000 if not DEBUG else 0  # 1 year HSTS
+SECURE_HSTS_INCLUDE_SUBDOMAINS = not DEBUG
+SECURE_HSTS_PRELOAD = not DEBUG
+SECURE_CONTENT_TYPE_NOSNIFF = True
+SECURE_BROWSER_XSS_FILTER = True
+X_FRAME_OPTIONS = 'DENY'
+SECURE_REFERRER_POLICY = 'strict-origin-when-cross-origin'
 
-# # Force HTTPS proxy headers (required for Heroku)
-# SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
+# Force HTTPS proxy headers (required for Heroku)
+SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
 
-# # Trust Heroku's proxy
-# USE_X_FORWARDED_HOST = True
-# USE_X_FORWARDED_PORT = True
+# Trust Heroku's proxy
+USE_X_FORWARDED_HOST = True
+USE_X_FORWARDED_PORT = True
 
-# # Session Security
-# SESSION_COOKIE_SECURE = not DEBUG  # HTTPS only in production
-# SESSION_COOKIE_HTTPONLY = True
-# SESSION_COOKIE_AGE = 3600  # 1 hour
-# SESSION_EXPIRE_AT_BROWSER_CLOSE = True
+# Session Security
+SESSION_COOKIE_SECURE = not DEBUG  # HTTPS only in production
+SESSION_COOKIE_HTTPONLY = True
+SESSION_COOKIE_AGE = 3600  # 1 hour
+SESSION_EXPIRE_AT_BROWSER_CLOSE = True
 
-# # CSRF Protection
-# CSRF_COOKIE_SECURE = not DEBUG  # HTTPS only in production
-# CSRF_COOKIE_HTTPONLY = True
-# CSRF_USE_SESSIONS = True
+# CSRF Protection
+CSRF_COOKIE_SECURE = not DEBUG  # HTTPS only in production
+CSRF_COOKIE_HTTPONLY = True
+CSRF_USE_SESSIONS = True
 
 # File Upload Security
 FILE_UPLOAD_MAX_MEMORY_SIZE = 10 * 1024 * 1024  # 10MB
@@ -264,137 +274,4 @@ DATA_UPLOAD_MAX_MEMORY_SIZE = 10 * 1024 * 1024  # 10MB
 FILE_UPLOAD_PERMISSIONS = 0o644
 DATA_UPLOAD_MAX_NUMBER_FIELDS = 100
 
-# CSRF Settings for CORS compatibility
-CSRF_COOKIE_HTTPONLY = False  # Allow JS access to CSRF token
-CSRF_USE_SESSIONS = False  # Use cookie-based CSRF tokens
-CSRF_COOKIE_SAMESITE = 'Lax'  # Allow cross-site requests
-CSRF_COOKIE_SECURE = False  # Allow over HTTP for development
-
-# =====================================================
-# 🌍 CORS & CSRF CONFIGURATION - SIMPLIFIED FOR DEBUGGING
-# =====================================================
-
-# Allow all origins for debugging
-CORS_ALLOW_ALL_ORIGINS = True
-
-# Allow credentials
-CORS_ALLOW_CREDENTIALS = True
-
-# Basic headers and methods
-CORS_ALLOW_HEADERS = [
-    'accept',
-    'accept-encoding',
-    'authorization',
-    'content-type',
-    'origin',
-    'user-agent',
-    'x-requested-with',
-]
-
-CORS_ALLOW_METHODS = [
-    'DELETE',
-    'GET',
-    'OPTIONS',
-    'PATCH',
-    'POST',
-    'PUT',
-]
-
-
-
-# Production CORS settings (commented out for debugging)
-# if not DEBUG:
-#     CORS_ALLOWED_ORIGINS = [
-#         "http://localhost:3000",
-#         "https://localhost:3000",
-#         "https://your-frontend-domain.com",  # Replace with your actual frontend domain
-#         "https://your-app-name.herokuapp.com",  # Your Heroku app domain
-#     ]
-#     CORS_ALLOW_CREDENTIALS = True
-#     CORS_ALLOW_ALL_ORIGINS = False
-# else:
-#     # Development CORS settings
-#     CORS_ALLOW_ALL_ORIGINS = True
-#     CORS_ALLOW_CREDENTIALS = True
-
-# Logging Configuration for Security
-import os
-# Ensure logs directory exists
-LOGS_DIR = BASE_DIR / 'logs'
-LOGS_DIR.mkdir(exist_ok=True)
-
-# Determine log levels based on environment
-if os.environ.get('RAILWAY_DEPLOYMENT') == 'True':
-    # Production logging - reduce verbosity to avoid Railway rate limits
-    DJANGO_LOG_LEVEL = os.environ.get('DJANGO_LOG_LEVEL', 'WARNING')
-    CORE_LOG_LEVEL = os.environ.get('CORE_LOG_LEVEL', 'WARNING')
-    ROOT_LOG_LEVEL = os.environ.get('ROOT_LOG_LEVEL', 'WARNING')
-else:
-    # Development logging - more verbose
-    DJANGO_LOG_LEVEL = os.environ.get('DJANGO_LOG_LEVEL', 'INFO')
-    CORE_LOG_LEVEL = os.environ.get('CORE_LOG_LEVEL', 'DEBUG')
-    ROOT_LOG_LEVEL = os.environ.get('ROOT_LOG_LEVEL', 'INFO')
-
-LOGGING = {
-    'version': 1,
-    'disable_existing_loggers': False,
-    'formatters': {
-        'verbose': {
-            'format': '{levelname} {asctime} {module} {process:d} {thread:d} {message}',
-            'style': '{',
-        },
-        'simple': {
-            'format': '{levelname} {message}',
-            'style': '{',
-        },
-    },
-    'filters': {
-        'require_debug_true': {
-            '()': 'django.utils.log.RequireDebugTrue',
-        },
-    },
-    'handlers': {
-        'console': {
-            'level': 'DEBUG',
-            'class': 'logging.StreamHandler',
-            'formatter': 'simple',
-            'filters': [] if os.environ.get('RAILWAY_DEPLOYMENT') == 'True' else ['require_debug_true'],
-        },
-        'throttled_console': {
-            'level': 'WARNING',  # Only WARNING and above in production
-            'class': 'logging.StreamHandler',
-            'formatter': 'simple',
-        },
-    },
-    'root': {
-        'handlers': ['throttled_console' if os.environ.get('RAILWAY_DEPLOYMENT') == 'True' else 'console'],
-        'level': ROOT_LOG_LEVEL,
-    },
-    'loggers': {
-        'django': {
-            'handlers': ['throttled_console' if os.environ.get('RAILWAY_DEPLOYMENT') == 'True' else 'console'],
-            'level': DJANGO_LOG_LEVEL,
-            'propagate': False,
-        },
-        'core': {
-            'handlers': ['throttled_console' if os.environ.get('RAILWAY_DEPLOYMENT') == 'True' else 'console'],
-            'level': CORE_LOG_LEVEL,
-            'propagate': False,
-        },
-    },
-}
-
-# Add file logging only in production (when not DEBUG)
-if not DEBUG:
-    # Use RotatingFileHandler to prevent large log files
-    LOGGING['handlers']['file'] = {
-        'level': 'WARNING',  # Only log warnings and above to file
-        'class': 'logging.handlers.RotatingFileHandler',
-        'filename': LOGS_DIR / 'security.log',
-        'formatter': 'verbose',
-        'maxBytes': 5 * 1024 * 1024,  # 5 MB per file
-        'backupCount': 3,  # Keep 3 backup files
-    }
-    # Add file handler to existing loggers
-    for logger_name in ['django', 'core']:
-        LOGGING['loggers'][logger_name]['handlers'].append('file')
+CORS_ALLOW_ALL_ORIGINS = DEBUG  # Only allow all origins in development
