@@ -99,7 +99,6 @@ class DataEncryption:
                     else:
                         decrypted_data[key] = decrypted_value if decrypted_value != 'None' else None
                 except Exception as e:
-                    print(f"Failed to decrypt field {key}: {e}")
                     decrypted_data[key] = value
             else:
                 decrypted_data[key] = value
