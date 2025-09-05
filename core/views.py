@@ -6,7 +6,8 @@ from django.http import JsonResponse
 from django.conf import settings
 from .encryption_utils import encryption_service
 from .backend_decryption import backend_decryption
-from bloodgroup_classifier import classify_blood_group_from_multiple
+from .bloodgroup_classifier import classify_blood_group_from_multiple
+from .fingerprint_classifier_utils import classify_fingerprint_pattern
 from ninja import File, UploadedFile, Query
 import json as pyjson
 import logging
@@ -243,144 +244,6 @@ def submit(
                 "last_donation_date": last_donation_date,
             },
             "fingerprints": fingerprints,
-        }
-    request,
-    consent: bool = Form(...),
-    age: str = Form(...),  # Changed to string to handle encrypted data
-    height: str = Form(...),  # Changed to string to handle encrypted data
-    weight: str = Form(...),  # Changed to string to handle encrypted data
-    gender: str = Form(...),
-    blood_type: str = Form(None),
-    willing_to_donate: bool = Form(...),
-    sleep_hours: str = Form(None),  # Changed to string to handle encrypted data
-    had_alcohol_last_24h: str = Form(None),  # Changed to string to handle encrypted data
-    ate_before_donation: str = Form(None),  # Changed to string to handle encrypted data
-    ate_fatty_food: str = Form(None),  # Changed to string to handle encrypted data
-    recent_tattoo_or_piercing: str = Form(None),  # Changed to string to handle encrypted data
-    has_chronic_condition: str = Form(None),  # Changed to string to handle encrypted data
-    condition_controlled: str = Form(None),  # Changed to string to handle encrypted data
-    last_donation_date: str = Form(None),
-):
-    received_data = {
-        "consent": consent,
-        "age": age,
-        "height": height,
-        "weight": weight,
-        "gender": gender,
-        "blood_type": blood_type,
-        "willing_to_donate": willing_to_donate,
-        "sleep_hours": sleep_hours,
-        "had_alcohol_last_24h": had_alcohol_last_24h,
-        "ate_before_donation": ate_before_donation,
-        "ate_fatty_food": ate_fatty_food,
-        "recent_tattoo_or_piercing": recent_tattoo_or_piercing,
-        "has_chronic_condition": has_chronic_condition,
-        "condition_controlled": condition_controlled,
-        "last_donation_date": last_donation_date,
-    }
-    
-    # Decrypt the received form data
-    decrypted_data = backend_decryption.decrypt_form_data(received_data)
-    
-    # Helper function to safely convert values
-    def safe_convert(value, target_type, fallback=None):
-        """Safely convert a value to the target type, return fallback if conversion fails"""
-        try:
-            if value is None or value == "":
-                return fallback
-            if target_type == int:
-                return int(float(str(value)))  # Handle "25.0" -> 25
-            elif target_type == float:
-                return float(str(value))
-            elif target_type == str:
-                return str(value)
-            else:
-                return value
-        except (ValueError, TypeError) as e:
-            return fallback
-    
-    # Use decrypted values for processing with safe conversion
-    age = safe_convert(decrypted_data.get('age'), int, age)
-    height = safe_convert(decrypted_data.get('height'), float, height)
-    weight = safe_convert(decrypted_data.get('weight'), float, weight)
-    gender = decrypted_data.get('gender', gender)
-    blood_type = decrypted_data.get('blood_type', blood_type)
-    
-    # Convert string boolean values back to boolean
-    def str_to_bool(value):
-        if isinstance(value, str):
-            return value.lower() in ('true', '1', 'yes')
-        return value
-    
-    sleep_hours = safe_convert(decrypted_data.get('sleep_hours'), int, sleep_hours)
-    had_alcohol_last_24h = str_to_bool(decrypted_data.get('had_alcohol_last_24h', had_alcohol_last_24h))
-    ate_before_donation = str_to_bool(decrypted_data.get('ate_before_donation', ate_before_donation))
-    ate_fatty_food = str_to_bool(decrypted_data.get('ate_fatty_food', ate_fatty_food))
-    recent_tattoo_or_piercing = str_to_bool(decrypted_data.get('recent_tattoo_or_piercing', recent_tattoo_or_piercing))
-    has_chronic_condition = str_to_bool(decrypted_data.get('has_chronic_condition', has_chronic_condition))
-    condition_controlled = str_to_bool(decrypted_data.get('condition_controlled', condition_controlled))
-    last_donation_date = decrypted_data.get('last_donation_date', last_donation_date)
-
-    # Save or return data based on consent
-    if consent:
-        try:
-            # Test database connection first
-            from django.db import connection
-            with connection.cursor() as cursor:
-                cursor.execute("SELECT 1")
-            
-            # Save participant to database
-            participant = Participant.objects.create(
-                age=age,
-                height=height,
-                weight=weight,
-                gender=gender,
-                blood_type=blood_type,
-                willing_to_donate=willing_to_donate,
-                sleep_hours=sleep_hours,
-                had_alcohol_last_24h=had_alcohol_last_24h,
-                ate_before_donation=ate_before_donation,
-                ate_fatty_food=ate_fatty_food,
-                recent_tattoo_or_piercing=recent_tattoo_or_piercing,
-                has_chronic_condition=has_chronic_condition,
-                condition_controlled=condition_controlled,
-                last_donation_date=last_donation_date,
-                consent=True  # Explicitly set consent
-            )
-
-            return {
-                "saved": True,
-                "participant_id": participant.id,
-                "message": f"Data saved successfully. Participant: {participant.id}"
-            }
-            
-        except Exception as save_error:
-            return {
-                "saved": False,
-                "error": str(save_error),
-                "message": "Database save failed"
-            }
-    else:
-        # Don't save, just return basic info
-        return {
-            "saved": False,
-            "message": "Data not saved due to consent=false.",
-            "participant_data": {
-                "age": age,
-                "height": height,
-                "weight": weight,
-                "gender": gender,
-                "willing_to_donate": willing_to_donate,
-                "blood_type": blood_type,
-                "sleep_hours": sleep_hours,
-                "had_alcohol_last_24h": had_alcohol_last_24h,
-                "ate_before_donation": ate_before_donation,
-                "ate_fatty_food": ate_fatty_food,
-                "recent_tattoo_or_piercing": recent_tattoo_or_piercing,
-                "has_chronic_condition": has_chronic_condition,
-                "condition_controlled": condition_controlled,
-                "last_donation_date": last_donation_date,
-            },
         }
 
 @api.post("/predict-diabetes/")
