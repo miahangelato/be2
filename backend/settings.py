@@ -73,7 +73,7 @@ MIDDLEWARE = [
     'whitenoise.middleware.WhiteNoiseMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
-    'django.middleware.csrf.CsrfViewMiddleware',
+    # 'django.middleware.csrf.CsrfViewMiddleware',  # Temporarily disabled for debugging
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
@@ -271,50 +271,26 @@ CSRF_COOKIE_SAMESITE = 'Lax'  # Allow cross-site requests
 CSRF_COOKIE_SECURE = False  # Allow over HTTP for development
 
 # =====================================================
-# 🌍 CORS & CSRF CONFIGURATION - COMPREHENSIVE SOLUTION
+# 🌍 CORS & CSRF CONFIGURATION - SIMPLIFIED FOR DEBUGGING
 # =====================================================
 
-# Allow all origins for development (temporary fix)
+# Allow all origins for debugging
 CORS_ALLOW_ALL_ORIGINS = True
 
-# Allow credentials (cookies, auth headers) across origins
+# Allow credentials
 CORS_ALLOW_CREDENTIALS = True
 
-# Explicitly allowed origins (for production use)
-CORS_ALLOWED_ORIGINS = [
-    "http://localhost:3000",
-    "https://localhost:3000", 
-    "http://127.0.0.1:3000",
-    "https://127.0.0.1:3000",
-    "https://be2-production.up.railway.app",
-]
-
-# CSRF protection for same origins
-CSRF_TRUSTED_ORIGINS = [
-    "http://localhost:3000",
-    "https://localhost:3000",
-    "http://127.0.0.1:3000", 
-    "https://127.0.0.1:3000",
-    "https://be2-production.up.railway.app",
-]
-
-# Comprehensive list of allowed headers
+# Basic headers and methods
 CORS_ALLOW_HEADERS = [
     'accept',
     'accept-encoding',
     'authorization',
     'content-type',
-    'dnt',
     'origin',
     'user-agent',
-    'x-csrftoken',
     'x-requested-with',
-    'cache-control',
-    'pragma',
-    'if-modified-since',
 ]
 
-# Comprehensive list of allowed methods
 CORS_ALLOW_METHODS = [
     'DELETE',
     'GET',
@@ -323,18 +299,6 @@ CORS_ALLOW_METHODS = [
     'POST',
     'PUT',
 ]
-
-# Expose headers to the frontend
-CORS_EXPOSE_HEADERS = [
-    'content-type',
-    'x-csrftoken',
-]
-
-# Preflight cache age
-CORS_PREFLIGHT_MAX_AGE = 86400
-
-# Allow unsafe URLs
-CORS_URLS_REGEX = r'^.*$'
 
 
 
