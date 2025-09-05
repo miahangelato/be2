@@ -6,12 +6,7 @@ from django.http import JsonResponse
 from django.conf import settings
 from .encryption_utils import encryption_service
 from .backend_decryption import backend_decryption
-from .bloodgroup_classifier import classify_blood_group_from_multiple
-from .fingerprint_classifier_utils import classify_fingerprint_pattern
-from ninja import File, UploadedFile, Query
-import json as pyjson
 import logging
-import os
 
 logger = logging.getLogger(__name__)
 
@@ -81,18 +76,7 @@ def submit(
     has_chronic_condition: str = Form(None),  # Changed to string to handle encrypted data
     condition_controlled: str = Form(None),  # Changed to string to handle encrypted data
     last_donation_date: str = Form(None),
-    left_thumb: UploadedFile = File(...),
-    left_index: UploadedFile = File(...),
-    left_middle: UploadedFile = File(...),
-    left_ring: UploadedFile = File(...),
-    left_pinky: UploadedFile = File(...),
-    right_thumb: UploadedFile = File(...),
-    right_index: UploadedFile = File(...),
-    right_middle: UploadedFile = File(...),
-    right_ring: UploadedFile = File(...),
-    right_pinky: UploadedFile = File(...),
 ):
-    print("[📨 BACKEND RECEIVED] Raw encrypted parameters:")
     received_data = {
         "consent": consent,
         "age": age,
@@ -111,20 +95,8 @@ def submit(
         "last_donation_date": last_donation_date,
     }
     
-    for key, value in received_data.items():
-        if isinstance(value, str) and len(value) > 50:
-            print(f"  {key}: {value[:30]}... (possibly encrypted)")
-        else:
-            print(f"  {key}: {value}")
-    
-    print(f"[🔓 BACKEND DECRYPTING] Decrypting sensitive data...")
-    
     # Decrypt the received form data
     decrypted_data = backend_decryption.decrypt_form_data(received_data)
-    
-    print(f"[✅ BACKEND DECRYPTED] Final decrypted parameters:")
-    for key, value in decrypted_data.items():
-        print(f"  {key}: {value}")
     
     # Helper function to safely convert values
     def safe_convert(value, target_type, fallback=None):
@@ -141,7 +113,6 @@ def submit(
             else:
                 return value
         except (ValueError, TypeError) as e:
-            print(f"[⚠️ CONVERSION WARNING] Failed to convert {value} to {target_type.__name__}: {e}")
             return fallback
     
     # Use decrypted values for processing with safe conversion
@@ -165,63 +136,46 @@ def submit(
     has_chronic_condition = str_to_bool(decrypted_data.get('has_chronic_condition', has_chronic_condition))
     condition_controlled = str_to_bool(decrypted_data.get('condition_controlled', condition_controlled))
     last_donation_date = decrypted_data.get('last_donation_date', last_donation_date)
-    
-    # Process fingerprints
-    finger_files = {
-        "left_thumb": left_thumb,
-        "left_index": left_index,
-        "left_middle": left_middle,
-        "left_ring": left_ring,
-        "left_pinky": left_pinky,
-        "right_thumb": right_thumb,
-        "right_index": right_index,
-        "right_middle": right_middle,
-        "right_ring": right_ring,
-        "right_pinky": right_pinky,
-    }
-
-    fingerprints = []
-    for finger_name, img_file in finger_files.items():
-        if img_file and hasattr(img_file, 'file'):
-            pattern = classify_fingerprint_pattern(img_file.file)
-            fingerprints.append({
-                "finger": finger_name,
-                "pattern": pattern,
-                "image_name": img_file.name,
-            })
 
     # Save or return data based on consent
     if consent:
-        # Save participant and fingerprints to database
-        participant = Participant.objects.create(
-            age=age,
-            height=height,
-            weight=weight,
-            gender=gender,
-            blood_type=blood_type,
-            willing_to_donate=willing_to_donate,
-            sleep_hours=sleep_hours,
-            had_alcohol_last_24h=had_alcohol_last_24h,
-            ate_before_donation=ate_before_donation,
-            ate_fatty_food=ate_fatty_food,
-            recent_tattoo_or_piercing=recent_tattoo_or_piercing,
-            has_chronic_condition=has_chronic_condition,
-            condition_controlled=condition_controlled,
-            last_donation_date=last_donation_date,
-        )
-        for fp in fingerprints:
-            Fingerprint.objects.create(
-                participant=participant,
-                finger=fp["finger"],
-                image=finger_files[fp["finger"]],
-                pattern=fp["pattern"],
+        try:
+            # Test database connection first
+            from django.db import connection
+            with connection.cursor() as cursor:
+                cursor.execute("SELECT 1")
+            
+            # Save participant to database
+            participant = Participant.objects.create(
+                age=age,
+                height=height,
+                weight=weight,
+                gender=gender,
+                blood_type=blood_type,
+                willing_to_donate=willing_to_donate,
+                sleep_hours=sleep_hours,
+                had_alcohol_last_24h=had_alcohol_last_24h,
+                ate_before_donation=ate_before_donation,
+                ate_fatty_food=ate_fatty_food,
+                recent_tattoo_or_piercing=recent_tattoo_or_piercing,
+                has_chronic_condition=has_chronic_condition,
+                condition_controlled=condition_controlled,
+                last_donation_date=last_donation_date,
+                consent=True  # Explicitly set consent
             )
 
-        return {
-            "saved": True,
-            "participant_id": participant.id,
-            "message": "Data saved successfully."
-        }
+            return {
+                "saved": True,
+                "participant_id": participant.id,
+                "message": f"Data saved successfully. Participant: {participant.id}"
+            }
+            
+        except Exception as save_error:
+            return {
+                "saved": False,
+                "error": str(save_error),
+                "message": "Database save failed"
+            }
     else:
         # Don't save, just return basic info
         return {
@@ -243,7 +197,6 @@ def submit(
                 "condition_controlled": condition_controlled,
                 "last_donation_date": last_donation_date,
             },
-            "fingerprints": fingerprints,
         }
 
 @api.post("/predict-diabetes/")
@@ -414,115 +367,3 @@ def encrypt_data(request, data: str):
         return JsonResponse({"success": True, "encrypted_data": encrypted_data})
     except Exception as e:
         return JsonResponse({"success": False, "error": str(e)})
-    
-@api.post("/identify-blood-group-from-participant/")
-def identify_blood_group_from_participant(request, participant_id: int = Query(...)):
-    """
-    Identify blood group for each fingerprint image of a participant (by participant_id).
-    Returns a list of predictions, one per fingerprint.
-    """
-    
-    # Check if participant exists
-    try:
-        participant = Participant.objects.get(id=participant_id)
-    except Participant.DoesNotExist:
-        return {"error": "Participant not found.", "participant_id": participant_id}
-
-    # Fetch fingerprints
-    fingerprints = participant.fingerprints.all()
-    if not fingerprints:
-        return {"error": "No fingerprints found.", "participant_id": participant_id}
-
-
-    results = []
-    import tempfile
-    
-    for fp in fingerprints:
-        if fp.image:
-            temp_path = None
-            try:
-                # Create a temporary file to store the image content
-                with tempfile.NamedTemporaryFile(delete=False, suffix='.jpg') as temp_file:
-                    temp_path = temp_file.name
-                    # Read image content from storage and write to temp file
-                    fp.image.open('rb')
-                    temp_file.write(fp.image.read())
-                    fp.image.close()
-                
-                # Use the temporary file for classification
-                pred = classify_blood_group_from_multiple([temp_path])
-                predicted_blood_group = pred['predicted_blood_group']
-                results.append({
-                    "finger": fp.finger,
-                    "filename": fp.image.name.split('/')[-1],  # Get filename from storage path
-                    "predicted_blood_group": pred['predicted_blood_group'],
-                    "confidence": pred['confidence'],
-                    "all_probabilities": pred.get('all_probabilities'),
-                })
-            except Exception as e:
-                results.append({"finger": fp.finger, "error": str(e)})
-            finally:
-                # Clean up temporary file
-                if temp_path and os.path.exists(temp_path):
-                    os.unlink(temp_path)
-        else:
-            results.append({"finger": fp.finger, "error": "Image not found"})
-
-    return {"participant_id": participant_id, "results": results}
-    return {"participant_id": participant_id, "results": results, "predicted_blood_group": predicted_blood_group}
-    
-@api.post("/identify-blood-group-from-json/")
-def identify_blood_group_from_json(request, json: str = Form(...), files: list[UploadedFile] = File(...)):
-    """
-    Identify blood group for each uploaded fingerprint image, using metadata from JSON (consent=false flow).
-    Expects:
-      - json: JSON string with 'fingerprints' (list of dicts with 'finger', 'image_name', ...)
-      - files: uploaded fingerprint images (order or name must match JSON)
-    Returns a list of predictions, one per image.
-    """
-    import tempfile, shutil
-    results = []
-    temp_paths = []
-    try:
-        data = pyjson.loads(json)
-        fingerprints_meta = data.get('fingerprints', [])
-        # Map image_name to file
-        file_map = {f.name: f for f in files}
-        for fp_meta in fingerprints_meta:
-            img_name = fp_meta.get('image_name')
-            f = file_map.get(img_name)
-            if not f:
-                results.append({"image_name": img_name, "error": "No file uploaded for this fingerprint"})
-                continue
-            temp_fd, temp_path = tempfile.mkstemp(suffix='.png')
-            os.close(temp_fd)
-            with open(temp_path, 'wb') as out:
-                f.file.seek(0)
-                shutil.copyfileobj(f.file, out)
-            temp_paths.append(temp_path)
-            try:
-                pred = classify_blood_group_from_multiple([temp_path])
-                predicted_blood_group = pred['predicted_blood_group']
-                results.append({
-                    "finger": fp_meta.get('finger'),
-                    "image_name": img_name,
-                    "predicted_blood_group": pred['predicted_blood_group'],
-                    "confidence": pred['confidence'],
-                    "all_probabilities": pred.get('all_probabilities'),
-                })
-            except Exception as e:
-                results.append({
-                    "finger": fp_meta.get('finger'),
-                    "image_name": img_name,
-                    "error": str(e)
-                })
-        return {"success": True, "results": results, "predicted_blood_group": predicted_blood_group}
-    except Exception as e:
-        return {"success": False, "error": f"Blood group identification failed: {e}"}
-    finally:
-        for p in temp_paths:
-            try:
-                if os.path.exists(p):
-                    os.unlink(p)
-            except Exception:
-                pass
