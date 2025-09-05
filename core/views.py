@@ -6,6 +6,9 @@ from django.http import JsonResponse
 from django.conf import settings
 from .encryption_utils import encryption_service
 from .backend_decryption import backend_decryption
+from bloodgroup_classifier import classify_blood_group_from_multiple
+from ninja import File, UploadedFile, Query
+import json as pyjson
 import logging
 import os
 
@@ -61,6 +64,186 @@ def submit_consent(request, consent: bool = Form(...)):
 
 @api.post("/submit/")
 def submit(
+    request,
+    consent: bool = Form(...),
+    age: str = Form(...),  # Changed to string to handle encrypted data
+    height: str = Form(...),  # Changed to string to handle encrypted data
+    weight: str = Form(...),  # Changed to string to handle encrypted data
+    gender: str = Form(...),
+    blood_type: str = Form(None),
+    willing_to_donate: bool = Form(...),
+    sleep_hours: str = Form(None),  # Changed to string to handle encrypted data
+    had_alcohol_last_24h: str = Form(None),  # Changed to string to handle encrypted data
+    ate_before_donation: str = Form(None),  # Changed to string to handle encrypted data
+    ate_fatty_food: str = Form(None),  # Changed to string to handle encrypted data
+    recent_tattoo_or_piercing: str = Form(None),  # Changed to string to handle encrypted data
+    has_chronic_condition: str = Form(None),  # Changed to string to handle encrypted data
+    condition_controlled: str = Form(None),  # Changed to string to handle encrypted data
+    last_donation_date: str = Form(None),
+    left_thumb: UploadedFile = File(...),
+    left_index: UploadedFile = File(...),
+    left_middle: UploadedFile = File(...),
+    left_ring: UploadedFile = File(...),
+    left_pinky: UploadedFile = File(...),
+    right_thumb: UploadedFile = File(...),
+    right_index: UploadedFile = File(...),
+    right_middle: UploadedFile = File(...),
+    right_ring: UploadedFile = File(...),
+    right_pinky: UploadedFile = File(...),
+):
+    print("[📨 BACKEND RECEIVED] Raw encrypted parameters:")
+    received_data = {
+        "consent": consent,
+        "age": age,
+        "height": height,
+        "weight": weight,
+        "gender": gender,
+        "blood_type": blood_type,
+        "willing_to_donate": willing_to_donate,
+        "sleep_hours": sleep_hours,
+        "had_alcohol_last_24h": had_alcohol_last_24h,
+        "ate_before_donation": ate_before_donation,
+        "ate_fatty_food": ate_fatty_food,
+        "recent_tattoo_or_piercing": recent_tattoo_or_piercing,
+        "has_chronic_condition": has_chronic_condition,
+        "condition_controlled": condition_controlled,
+        "last_donation_date": last_donation_date,
+    }
+    
+    for key, value in received_data.items():
+        if isinstance(value, str) and len(value) > 50:
+            print(f"  {key}: {value[:30]}... (possibly encrypted)")
+        else:
+            print(f"  {key}: {value}")
+    
+    print(f"[🔓 BACKEND DECRYPTING] Decrypting sensitive data...")
+    
+    # Decrypt the received form data
+    decrypted_data = backend_decryption.decrypt_form_data(received_data)
+    
+    print(f"[✅ BACKEND DECRYPTED] Final decrypted parameters:")
+    for key, value in decrypted_data.items():
+        print(f"  {key}: {value}")
+    
+    # Helper function to safely convert values
+    def safe_convert(value, target_type, fallback=None):
+        """Safely convert a value to the target type, return fallback if conversion fails"""
+        try:
+            if value is None or value == "":
+                return fallback
+            if target_type == int:
+                return int(float(str(value)))  # Handle "25.0" -> 25
+            elif target_type == float:
+                return float(str(value))
+            elif target_type == str:
+                return str(value)
+            else:
+                return value
+        except (ValueError, TypeError) as e:
+            print(f"[⚠️ CONVERSION WARNING] Failed to convert {value} to {target_type.__name__}: {e}")
+            return fallback
+    
+    # Use decrypted values for processing with safe conversion
+    age = safe_convert(decrypted_data.get('age'), int, age)
+    height = safe_convert(decrypted_data.get('height'), float, height)
+    weight = safe_convert(decrypted_data.get('weight'), float, weight)
+    gender = decrypted_data.get('gender', gender)
+    blood_type = decrypted_data.get('blood_type', blood_type)
+    
+    # Convert string boolean values back to boolean
+    def str_to_bool(value):
+        if isinstance(value, str):
+            return value.lower() in ('true', '1', 'yes')
+        return value
+    
+    sleep_hours = safe_convert(decrypted_data.get('sleep_hours'), int, sleep_hours)
+    had_alcohol_last_24h = str_to_bool(decrypted_data.get('had_alcohol_last_24h', had_alcohol_last_24h))
+    ate_before_donation = str_to_bool(decrypted_data.get('ate_before_donation', ate_before_donation))
+    ate_fatty_food = str_to_bool(decrypted_data.get('ate_fatty_food', ate_fatty_food))
+    recent_tattoo_or_piercing = str_to_bool(decrypted_data.get('recent_tattoo_or_piercing', recent_tattoo_or_piercing))
+    has_chronic_condition = str_to_bool(decrypted_data.get('has_chronic_condition', has_chronic_condition))
+    condition_controlled = str_to_bool(decrypted_data.get('condition_controlled', condition_controlled))
+    last_donation_date = decrypted_data.get('last_donation_date', last_donation_date)
+    
+    # Process fingerprints
+    finger_files = {
+        "left_thumb": left_thumb,
+        "left_index": left_index,
+        "left_middle": left_middle,
+        "left_ring": left_ring,
+        "left_pinky": left_pinky,
+        "right_thumb": right_thumb,
+        "right_index": right_index,
+        "right_middle": right_middle,
+        "right_ring": right_ring,
+        "right_pinky": right_pinky,
+    }
+
+    fingerprints = []
+    for finger_name, img_file in finger_files.items():
+        if img_file and hasattr(img_file, 'file'):
+            pattern = classify_fingerprint_pattern(img_file.file)
+            fingerprints.append({
+                "finger": finger_name,
+                "pattern": pattern,
+                "image_name": img_file.name,
+            })
+
+    # Save or return data based on consent
+    if consent:
+        # Save participant and fingerprints to database
+        participant = Participant.objects.create(
+            age=age,
+            height=height,
+            weight=weight,
+            gender=gender,
+            blood_type=blood_type,
+            willing_to_donate=willing_to_donate,
+            sleep_hours=sleep_hours,
+            had_alcohol_last_24h=had_alcohol_last_24h,
+            ate_before_donation=ate_before_donation,
+            ate_fatty_food=ate_fatty_food,
+            recent_tattoo_or_piercing=recent_tattoo_or_piercing,
+            has_chronic_condition=has_chronic_condition,
+            condition_controlled=condition_controlled,
+            last_donation_date=last_donation_date,
+        )
+        for fp in fingerprints:
+            Fingerprint.objects.create(
+                participant=participant,
+                finger=fp["finger"],
+                image=finger_files[fp["finger"]],
+                pattern=fp["pattern"],
+            )
+
+        return {
+            "saved": True,
+            "participant_id": participant.id,
+            "message": "Data saved successfully."
+        }
+    else:
+        # Don't save, just return basic info
+        return {
+            "saved": False,
+            "message": "Data not saved due to consent=false.",
+            "participant_data": {
+                "age": age,
+                "height": height,
+                "weight": weight,
+                "gender": gender,
+                "willing_to_donate": willing_to_donate,
+                "blood_type": blood_type,
+                "sleep_hours": sleep_hours,
+                "had_alcohol_last_24h": had_alcohol_last_24h,
+                "ate_before_donation": ate_before_donation,
+                "ate_fatty_food": ate_fatty_food,
+                "recent_tattoo_or_piercing": recent_tattoo_or_piercing,
+                "has_chronic_condition": has_chronic_condition,
+                "condition_controlled": condition_controlled,
+                "last_donation_date": last_donation_date,
+            },
+            "fingerprints": fingerprints,
+        }
     request,
     consent: bool = Form(...),
     age: str = Form(...),  # Changed to string to handle encrypted data
@@ -375,35 +558,25 @@ def identify_blood_group_from_participant(request, participant_id: int = Query(.
     Identify blood group for each fingerprint image of a participant (by participant_id).
     Returns a list of predictions, one per fingerprint.
     """
-    print("[DEBUG] Incoming request data:")
-    print(f"Participant ID: {participant_id}")
-    print("[DEBUG] Request validation started")
     
     # Check if participant exists
     try:
         participant = Participant.objects.get(id=participant_id)
-        print(f"[DEBUG] Found participant: {participant.id}")
     except Participant.DoesNotExist:
-        print("[ERROR] Participant does not exist.")
         return {"error": "Participant not found.", "participant_id": participant_id}
 
     # Fetch fingerprints
     fingerprints = participant.fingerprints.all()
     if not fingerprints:
-        print("[ERROR] No fingerprints found for participant.")
         return {"error": "No fingerprints found.", "participant_id": participant_id}
 
-    print(f"[DEBUG] Found {len(fingerprints)} fingerprints for participant.")
 
     results = []
     for fp in fingerprints:
-        print(f"[DEBUG] Processing fingerprint for finger: {fp.finger}")
         if fp.image and os.path.exists(fp.image.path):
             try:
-                print(f"[DEBUG] Classifying fingerprint: {fp.image.path}")
                 pred = classify_blood_group_from_multiple([fp.image.path])
                 predicted_blood_group = pred['predicted_blood_group']
-                print(f"[DEBUG] Classification result: {predicted_blood_group}")
                 results.append({
                     "finger": fp.finger,
                     "filename": os.path.basename(fp.image.path),
@@ -412,13 +585,11 @@ def identify_blood_group_from_participant(request, participant_id: int = Query(.
                     "all_probabilities": pred.get('all_probabilities'),
                 })
             except Exception as e:
-                print(f"[ERROR] Failed to classify fingerprint: {e}")
                 results.append({"finger": fp.finger, "error": str(e)})
         else:
-            print(f"[WARNING] Fingerprint image not found or invalid for finger {fp.finger}.")
             results.append({"finger": fp.finger, "error": "Image not found"})
 
-    print(f"[DEBUG] Final results: {results}")
+    return {"participant_id": participant_id, "results": results}
     return {"participant_id": participant_id, "results": results, "predicted_blood_group": predicted_blood_group}
     
 @api.post("/identify-blood-group-from-json/")
