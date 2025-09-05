@@ -47,6 +47,8 @@ ALLOWED_HOSTS = [
     '.herokuapp.com',  # Allow all Heroku subdomains
     '.ngrok-free.app',  # For development testing
     '.ngrok.io',  # For development testing
+    '.up.railway.app',  # Allow all Railway subdomains
+    'be2-production.up.railway.app',  # Your specific Railway domain
 ]
 
 # Add your specific Heroku app domain when you create it
@@ -73,6 +75,7 @@ INSTALLED_APPS = [
 MIDDLEWARE = [
     'corsheaders.middleware.CorsMiddleware',
     'django.middleware.security.SecurityMiddleware',
+    'whitenoise.middleware.WhiteNoiseMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
@@ -269,21 +272,23 @@ DATA_UPLOAD_MAX_MEMORY_SIZE = 10 * 1024 * 1024  # 10MB
 FILE_UPLOAD_PERMISSIONS = 0o644
 DATA_UPLOAD_MAX_NUMBER_FIELDS = 100
 
-CORS_ALLOW_ALL_ORIGINS = DEBUG  # Only allow all origins in development
+CORS_ALLOW_ALL_ORIGINS = True  # Temporarily allow all origins for debugging
+CORS_ALLOW_CREDENTIALS = True
 
-# Production CORS settings
-if not DEBUG:
-    CORS_ALLOWED_ORIGINS = [
-        "http://localhost:3000",
-        "https://your-frontend-domain.com",  # Replace with your actual frontend domain
-        "https://your-app-name.herokuapp.com",  # Your Heroku app domain
-    ]
-    CORS_ALLOW_CREDENTIALS = True
-    CORS_ALLOW_ALL_ORIGINS = False
-else:
-    # Development CORS settings
-    CORS_ALLOW_ALL_ORIGINS = True
-    CORS_ALLOW_CREDENTIALS = True
+# Production CORS settings (commented out for debugging)
+# if not DEBUG:
+#     CORS_ALLOWED_ORIGINS = [
+#         "http://localhost:3000",
+#         "https://localhost:3000",
+#         "https://your-frontend-domain.com",  # Replace with your actual frontend domain
+#         "https://your-app-name.herokuapp.com",  # Your Heroku app domain
+#     ]
+#     CORS_ALLOW_CREDENTIALS = True
+#     CORS_ALLOW_ALL_ORIGINS = False
+# else:
+#     # Development CORS settings
+#     CORS_ALLOW_ALL_ORIGINS = True
+#     CORS_ALLOW_CREDENTIALS = True
 
 # Logging Configuration for Security
 import os
