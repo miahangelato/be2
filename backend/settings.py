@@ -11,6 +11,7 @@ https://docs.djangoproject.com/en/5.2/ref/settings/
 """
 
 from pathlib import Path
+from corsheaders.defaults import default_headers, default_methods
 import os
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
@@ -265,12 +266,18 @@ DATA_UPLOAD_MAX_NUMBER_FIELDS = 100
 
 CORS_ALLOWED_ORIGINS = [
     "http://localhost:3000",
+    "https://localhost:3000",  # just in case
     "https://be2-production.up.railway.app",
 ]
 
 CORS_ALLOW_CREDENTIALS = True
-CORS_ALLOW_HEADERS = ["*"]
-CORS_ALLOW_METHODS = ["*"]
+
+CORS_ALLOW_HEADERS = list(default_headers) + [
+    "content-type",
+    "authorization",
+]
+
+CORS_ALLOW_METHODS = list(default_methods)
 
 
 # Production CORS settings (commented out for debugging)

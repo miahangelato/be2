@@ -6,7 +6,7 @@ Django==5.2.5
 django-cors-headers==4.7.0
 django-ninja==1.4.3
 djangorestframework==3.16.1
-gunicorn==21.2.0
+gunicorn>=21.2.0
 whitenoise==6.5.0
 
 # Database
