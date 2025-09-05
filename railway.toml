@@ -1,9 +1,9 @@
 [build]
 builder = "nixpacks"
-buildCommand = "python -m pip install --upgrade pip && pip install --no-cache-dir -r requirements.txt"
+buildCommand = "python -m pip install --upgrade pip && pip install --no-cache-dir -r requirements.txt && python manage.py collectstatic --noinput"
 
 [deploy]
-startCommand = "python startup.py"
+startCommand = "gunicorn backend.wsgi:application --bind 0.0.0.0:8080 --workers 3 --access-logfile - --error-logfile -"
 restartPolicyType = "on_failure"
 restartPolicyMaxRetries = 3
 
