@@ -2,6 +2,50 @@
 from django.db import models
 import uuid
 
+def fingerprint_upload_path(instance, filename):
+    """
+    Generate upload path: fingerprint_images/participant_ID/participant_ID_age_weight_height_bloodtype_gender_diabeticstatus_fingername.png
+    """
+    participant = instance.participant
+    participant_id = participant.id
+    finger_name = instance.finger
+    
+    # Extract file extension
+    file_extension = filename.split('.')[-1] if '.' in filename else 'png'
+    
+    # Get participant data with N/A for missing values
+    age = participant.age if participant.age else "N/A"
+    weight = participant.weight if participant.weight else "N/A"
+    height = participant.height if participant.height else "N/A"
+    gender = participant.gender if participant.gender else "N/A"
+    
+    # Get blood type - use result if available, otherwise participant's input, otherwise N/A
+    blood_type = "N/A"
+    if participant.blood_type and participant.blood_type != "unknown":
+        blood_type = participant.blood_type
+    else:
+        # Try to get blood type from results
+        try:
+            latest_result = participant.results.latest('created_at')
+            if latest_result.blood_group:
+                blood_type = latest_result.blood_group
+        except:
+            blood_type = "N/A"
+    
+    # Get diabetes status from results
+    diabetes_status = "N/A"
+    try:
+        latest_result = participant.results.latest('created_at')
+        if latest_result.diabetes_risk:
+            diabetes_status = latest_result.diabetes_risk
+    except:
+        diabetes_status = "N/A"
+    
+    # Create filename: participant_ID_age_weight_height_bloodtype_gender_diabeticstatus_fingername.extension
+    new_filename = f"participant_{participant_id}_{age}_{weight}_{height}_{blood_type}_{gender}_{diabetes_status}_{finger_name}.{file_extension}"
+    
+    return f"fingerprint_images/participant_{participant_id}/{new_filename}"
+
 class Participant(models.Model):
     age = models.IntegerField()
     gender = models.CharField(
@@ -87,7 +131,7 @@ class Participant(models.Model):
 class Fingerprint(models.Model):
     participant = models.ForeignKey(Participant, on_delete=models.CASCADE, related_name="fingerprints")
     finger = models.CharField(max_length=20)  # e.g., "left_thumb"
-    image = models.ImageField(upload_to="uploads/fingerprints/")
+    image = models.ImageField(upload_to=fingerprint_upload_path)
     pattern = models.CharField(max_length=20, null=True, blank=True)  # Arc, Loop, Whorl
 
 class Result(models.Model):

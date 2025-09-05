@@ -1,5 +1,5 @@
 from ninja import NinjaAPI, Form, Schema
-from .models import Participant, Fingerprint, Result
+from .models import Participant, Result
 from .diabetes_predictor import DiabetesPredictor
 import json
 from django.http import JsonResponse
