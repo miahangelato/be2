@@ -274,6 +274,7 @@ CORS_ALLOW_ALL_ORIGINS = DEBUG  # Only allow all origins in development
 # Production CORS settings
 if not DEBUG:
     CORS_ALLOWED_ORIGINS = [
+        "http://localhost:3000",
         "https://your-frontend-domain.com",  # Replace with your actual frontend domain
         "https://your-app-name.herokuapp.com",  # Your Heroku app domain
     ]
