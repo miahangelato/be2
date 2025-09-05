@@ -4,7 +4,7 @@ buildCommand = "python -m pip install --upgrade pip && pip install -r requiremen
 
 [deploy]
 startCommand = "python startup.py"
-healthcheckPath = "/api/health/"
+healthcheckPath = "/api/core/"
 healthcheckTimeout = 600
 restartPolicyType = "on_failure"
 restartPolicyMaxRetries = 3
