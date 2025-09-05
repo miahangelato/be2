@@ -173,18 +173,9 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 CORS_ALLOW_CREDENTIALS = True
 
-# CORS Settings for Production and Development  
-if DEBUG:
-    # Development: Allow all origins
-    CORS_ALLOW_ALL_ORIGINS = True
-else:
-    # Production: Allow specific origins
-    CORS_ALLOWED_ORIGINS = [
-        "http://localhost:3000",  # Local development
-        "http://127.0.0.1:3000",  # Local development
-        "https://your-app.vercel.app",  # Vercel deployment (update this)
-    ]
-    CORS_ALLOW_ALL_ORIGINS = False
+# CORS Settings - Temporarily allow all origins for testing
+CORS_ALLOW_ALL_ORIGINS = True
+CORS_ALLOW_CREDENTIALS = True
 
 # Additional CORS headers needed for your app
 CORS_ALLOW_HEADERS = [
@@ -197,6 +188,15 @@ CORS_ALLOW_HEADERS = [
     'user-agent',
     'x-csrftoken',
     'x-requested-with',
+]
+
+CORS_ALLOW_METHODS = [
+    'DELETE',
+    'GET',
+    'OPTIONS',
+    'PATCH',
+    'POST',
+    'PUT',
 ]
 
 
