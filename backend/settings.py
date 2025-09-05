@@ -47,13 +47,7 @@ ALLOWED_HOSTS = [
     '.herokuapp.com',  # Allow all Heroku subdomains
     '.ngrok-free.app',  # For development testing
     '.ngrok.io',  # For development testing
-    '.railway.app',  # Allow all Railway subdomains
-    '.railway.internal',  # Railway internal networking
 ]
-
-# Add Railway deployment URL if available
-if os.getenv('RAILWAY_PUBLIC_DOMAIN'):
-    ALLOWED_HOSTS.append(os.getenv('RAILWAY_PUBLIC_DOMAIN'))
 
 # Add your specific Heroku app domain when you create it
 # ALLOWED_HOSTS.append('your-app-name.herokuapp.com')
@@ -79,7 +73,6 @@ INSTALLED_APPS = [
 MIDDLEWARE = [
     'corsheaders.middleware.CorsMiddleware',
     'django.middleware.security.SecurityMiddleware',
-    'whitenoise.middleware.WhiteNoiseMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
@@ -173,40 +166,15 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 CORS_ALLOW_CREDENTIALS = True
 
-# CORS Settings - Temporarily allow all origins for testing
-CORS_ALLOW_ALL_ORIGINS = True
-CORS_ALLOW_CREDENTIALS = True
-
-# Additional CORS headers needed for your app
-CORS_ALLOW_HEADERS = [
-    'accept',
-    'accept-encoding',
-    'authorization',
-    'content-type',
-    'dnt',
-    'origin',
-    'user-agent',
-    'x-csrftoken',
-    'x-requested-with',
-]
-
-CORS_ALLOW_METHODS = [
-    'DELETE',
-    'GET',
-    'OPTIONS',
-    'PATCH',
-    'POST',
-    'PUT',
-]
-
 
 AWS_LOCATION = 'static'
 AWS_MEDIA_LOCATION = 'media'
 
 STATIC_URL = 'static/'
-# Remove non-existent static directory for Railway deployment
-STATICFILES_DIRS = []
-STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')
+STATICFILES_DIRS = [
+    BASE_DIR / "static_my_project",
+]
+STATIC_ROOT = os.path.join(BASE_DIR, 'static', 'static_root')
 
 MEDIA_URL = 'media/'
 MEDIA_ROOT = os.path.join(BASE_DIR, 'media', 'media_root')
@@ -257,7 +225,12 @@ STORAGES = {
         },
     },
     "staticfiles": {
-        "BACKEND": "django.contrib.staticfiles.storage.StaticFilesStorage",
+        "BACKEND": "storages.backends.s3boto3.S3StaticStorage",
+        "OPTIONS": {
+            "location": AWS_LOCATION,
+            "default_acl": 'public-read',  # Static files can be public
+            "querystring_auth": False,  # Static files don't need signing
+        },
     },
 }
 
@@ -295,3 +268,100 @@ FILE_UPLOAD_MAX_MEMORY_SIZE = 10 * 1024 * 1024  # 10MB
 DATA_UPLOAD_MAX_MEMORY_SIZE = 10 * 1024 * 1024  # 10MB
 FILE_UPLOAD_PERMISSIONS = 0o644
 DATA_UPLOAD_MAX_NUMBER_FIELDS = 100
+
+CORS_ALLOW_ALL_ORIGINS = DEBUG  # Only allow all origins in development
+
+# Production CORS settings
+if not DEBUG:
+    CORS_ALLOWED_ORIGINS = [
+        "https://your-frontend-domain.com",  # Replace with your actual frontend domain
+        "https://your-app-name.herokuapp.com",  # Your Heroku app domain
+    ]
+    CORS_ALLOW_CREDENTIALS = True
+    CORS_ALLOW_ALL_ORIGINS = False
+else:
+    # Development CORS settings
+    CORS_ALLOW_ALL_ORIGINS = True
+    CORS_ALLOW_CREDENTIALS = True
+
+# Logging Configuration for Security
+import os
+# Ensure logs directory exists
+LOGS_DIR = BASE_DIR / 'logs'
+LOGS_DIR.mkdir(exist_ok=True)
+
+# Determine log levels based on environment
+if os.environ.get('RAILWAY_DEPLOYMENT') == 'True':
+    # Production logging - reduce verbosity to avoid Railway rate limits
+    DJANGO_LOG_LEVEL = os.environ.get('DJANGO_LOG_LEVEL', 'WARNING')
+    CORE_LOG_LEVEL = os.environ.get('CORE_LOG_LEVEL', 'WARNING')
+    ROOT_LOG_LEVEL = os.environ.get('ROOT_LOG_LEVEL', 'WARNING')
+else:
+    # Development logging - more verbose
+    DJANGO_LOG_LEVEL = os.environ.get('DJANGO_LOG_LEVEL', 'INFO')
+    CORE_LOG_LEVEL = os.environ.get('CORE_LOG_LEVEL', 'DEBUG')
+    ROOT_LOG_LEVEL = os.environ.get('ROOT_LOG_LEVEL', 'INFO')
+
+LOGGING = {
+    'version': 1,
+    'disable_existing_loggers': False,
+    'formatters': {
+        'verbose': {
+            'format': '{levelname} {asctime} {module} {process:d} {thread:d} {message}',
+            'style': '{',
+        },
+        'simple': {
+            'format': '{levelname} {message}',
+            'style': '{',
+        },
+    },
+    'filters': {
+        'require_debug_true': {
+            '()': 'django.utils.log.RequireDebugTrue',
+        },
+    },
+    'handlers': {
+        'console': {
+            'level': 'DEBUG',
+            'class': 'logging.StreamHandler',
+            'formatter': 'simple',
+            'filters': [] if os.environ.get('RAILWAY_DEPLOYMENT') == 'True' else ['require_debug_true'],
+        },
+        'throttled_console': {
+            'level': 'WARNING',  # Only WARNING and above in production
+            'class': 'logging.StreamHandler',
+            'formatter': 'simple',
+        },
+    },
+    'root': {
+        'handlers': ['throttled_console' if os.environ.get('RAILWAY_DEPLOYMENT') == 'True' else 'console'],
+        'level': ROOT_LOG_LEVEL,
+    },
+    'loggers': {
+        'django': {
+            'handlers': ['throttled_console' if os.environ.get('RAILWAY_DEPLOYMENT') == 'True' else 'console'],
+            'level': DJANGO_LOG_LEVEL,
+            'propagate': False,
+        },
+        'core': {
+            'handlers': ['throttled_console' if os.environ.get('RAILWAY_DEPLOYMENT') == 'True' else 'console'],
+            'level': CORE_LOG_LEVEL,
+            'propagate': False,
+        },
+    },
+}
+
+# Add file logging only in production (when not DEBUG)
+if not DEBUG:
+    # Use RotatingFileHandler to prevent large log files
+    LOGGING['handlers']['file'] = {
+        'level': 'WARNING',  # Only log warnings and above to file
+        'class': 'logging.handlers.RotatingFileHandler',
+        'filename': LOGS_DIR / 'security.log',
+        'formatter': 'verbose',
+        'maxBytes': 5 * 1024 * 1024,  # 5 MB per file
+        'backupCount': 3,  # Keep 3 backup files
+    }
+    # Add file handler to existing loggers
+    for logger_name in ['django', 'core']:
+        LOGGING['loggers'][logger_name]['handlers'].append('file')
