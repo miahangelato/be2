@@ -173,7 +173,7 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 CORS_ALLOW_CREDENTIALS = True
 
-# CORS Settings for Production and Development
+# CORS Settings for Production and Development  
 if DEBUG:
     # Development: Allow all origins
     CORS_ALLOW_ALL_ORIGINS = True
