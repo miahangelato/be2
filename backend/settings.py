@@ -79,6 +79,7 @@ INSTALLED_APPS = [
 MIDDLEWARE = [
     'corsheaders.middleware.CorsMiddleware',
     'django.middleware.security.SecurityMiddleware',
+    'whitenoise.middleware.WhiteNoiseMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
@@ -172,6 +173,32 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 CORS_ALLOW_CREDENTIALS = True
 
+# CORS Settings for Production and Development
+if DEBUG:
+    # Development: Allow all origins
+    CORS_ALLOW_ALL_ORIGINS = True
+else:
+    # Production: Allow specific origins
+    CORS_ALLOWED_ORIGINS = [
+        "http://localhost:3000",  # Local development
+        "http://127.0.0.1:3000",  # Local development
+        "https://your-app.vercel.app",  # Vercel deployment (update this)
+    ]
+    CORS_ALLOW_ALL_ORIGINS = False
+
+# Additional CORS headers needed for your app
+CORS_ALLOW_HEADERS = [
+    'accept',
+    'accept-encoding',
+    'authorization',
+    'content-type',
+    'dnt',
+    'origin',
+    'user-agent',
+    'x-csrftoken',
+    'x-requested-with',
+]
+
 
 AWS_LOCATION = 'static'
 AWS_MEDIA_LOCATION = 'media'
@@ -230,12 +257,7 @@ STORAGES = {
         },
     },
     "staticfiles": {
-        "BACKEND": "storages.backends.s3boto3.S3StaticStorage",
-        "OPTIONS": {
-            "location": AWS_LOCATION,
-            "default_acl": 'public-read',  # Static files can be public
-            "querystring_auth": False,  # Static files don't need signing
-        },
+        "BACKEND": "django.contrib.staticfiles.storage.StaticFilesStorage",
     },
 }
 
@@ -273,5 +295,3 @@ FILE_UPLOAD_MAX_MEMORY_SIZE = 10 * 1024 * 1024  # 10MB
 DATA_UPLOAD_MAX_MEMORY_SIZE = 10 * 1024 * 1024  # 10MB
 FILE_UPLOAD_PERMISSIONS = 0o644
 DATA_UPLOAD_MAX_NUMBER_FIELDS = 100
-
-CORS_ALLOW_ALL_ORIGINS = DEBUG  # Only allow all origins in development
