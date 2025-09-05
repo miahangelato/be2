@@ -10,20 +10,4 @@ restartPolicyType = "on_failure"
 restartPolicyMaxRetries = 3
 
 [environments.production]
-variables = { 
-    DEBUG = "False", 
-    RAILWAY_DEPLOYMENT = "True",
-    PYTHONUNBUFFERED = "1",
-    DJANGO_SETTINGS_MODULE = "backend.settings"
-}der = "nixpacks"
-buildCommand = "python -m pip install --upgrade pip && pip install --no-cache-dir -r requirements.txt"
-
-[deploy]
-startCommand = "python startup.py"
-healthcheckPath = "/api/core/health/"
-healthcheckTimeout = 300
-restartPolicyType = "on_failure"
-restartPolicyMaxRetries = 3
-
-[environments.production]
-variables = { DEBUG = "False", RAILWAY_DEPLOYMENT = "True", PYTHONUNBUFFERED = "1" }
+variables = { DEBUG = "False", RAILWAY_DEPLOYMENT = "True", PYTHONUNBUFFERED = "1", DJANGO_SETTINGS_MODULE = "backend.settings" }
