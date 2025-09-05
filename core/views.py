@@ -1,4 +1,4 @@
-from ninja import NinjaAPI, Form, Schema
+from ninja import NinjaAPI, Form, Schema, File, UploadedFile
 from .models import Participant, Fingerprint, Result
 from .diabetes_predictor import DiabetesPredictor
 import json
@@ -8,6 +8,7 @@ from .encryption_utils import encryption_service
 from .backend_decryption import backend_decryption
 import logging
 import os
+from typing import List
 
 logger = logging.getLogger(__name__)
 
@@ -441,7 +442,7 @@ def identify_blood_group_from_participant(request, participant_id: int):
     return JsonResponse({"participant_id": participant_id, "results": results, "predicted_blood_group": predicted_blood_group})
 
 @api.post("/identify-blood-group-from-json/")
-def identify_blood_group_from_json(request, json_data: str = Form(...), files: list = None):
+def identify_blood_group_from_json(request, json_data: str = Form(...), files: List[UploadedFile] = File(None)):
     """
     Identify blood group for each uploaded fingerprint image, using metadata from JSON (consent=false flow).
     """
