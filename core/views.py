@@ -435,20 +435,36 @@ def identify_blood_group_from_participant(request, participant_id: int = Query(.
 
 
     results = []
+    import tempfile
+    
     for fp in fingerprints:
-        if fp.image and os.path.exists(fp.image.path):
+        if fp.image:
+            temp_path = None
             try:
-                pred = classify_blood_group_from_multiple([fp.image.path])
+                # Create a temporary file to store the image content
+                with tempfile.NamedTemporaryFile(delete=False, suffix='.jpg') as temp_file:
+                    temp_path = temp_file.name
+                    # Read image content from storage and write to temp file
+                    fp.image.open('rb')
+                    temp_file.write(fp.image.read())
+                    fp.image.close()
+                
+                # Use the temporary file for classification
+                pred = classify_blood_group_from_multiple([temp_path])
                 predicted_blood_group = pred['predicted_blood_group']
                 results.append({
                     "finger": fp.finger,
-                    "filename": os.path.basename(fp.image.path),
+                    "filename": fp.image.name.split('/')[-1],  # Get filename from storage path
                     "predicted_blood_group": pred['predicted_blood_group'],
                     "confidence": pred['confidence'],
                     "all_probabilities": pred.get('all_probabilities'),
                 })
             except Exception as e:
                 results.append({"finger": fp.finger, "error": str(e)})
+            finally:
+                # Clean up temporary file
+                if temp_path and os.path.exists(temp_path):
+                    os.unlink(temp_path)
         else:
             results.append({"finger": fp.finger, "error": "Image not found"})
 
