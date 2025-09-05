@@ -7,6 +7,18 @@ from django.conf import settings
 from .encryption_utils import encryption_service
 from .backend_decryption import backend_decryption
 import logging
+import os
+
+logger = logging.getLogger(__name__)
+
+# Conditional import for blood group classification
+try:
+    from .bloodgroup_classifier import classify_blood_group_from_multiple
+    BLOOD_GROUP_AVAILABLE = True
+except ImportError as e:
+    logger.warning(f"Blood group classification not available: {e}")
+    BLOOD_GROUP_AVAILABLE = False
+    classify_blood_group_from_multiple = None
 
 logger = logging.getLogger(__name__)
 
@@ -367,3 +379,134 @@ def encrypt_data(request, data: str):
         return JsonResponse({"success": True, "encrypted_data": encrypted_data})
     except Exception as e:
         return JsonResponse({"success": False, "error": str(e)})
+
+@api.post("/identify-blood-group-from-participant/")
+def identify_blood_group_from_participant(request, participant_id: int):
+    """
+    Identify blood group for each fingerprint image of a participant (by participant_id).
+    Returns a list of predictions, one per fingerprint.
+    """
+    if not BLOOD_GROUP_AVAILABLE:
+        return JsonResponse({
+            "error": "Blood group classification service is not available in this deployment",
+            "participant_id": participant_id
+        }, status=503)
+    
+    print("[DEBUG] Incoming request data:")
+    print(f"Participant ID: {participant_id}")
+    print("[DEBUG] Request validation started")
+    
+    # Check if participant exists
+    try:
+        participant = Participant.objects.get(id=participant_id)
+        print(f"[DEBUG] Found participant: {participant.id}")
+    except Participant.DoesNotExist:
+        print("[ERROR] Participant does not exist.")
+        return JsonResponse({"error": "Participant not found.", "participant_id": participant_id}, status=404)
+
+    # Fetch fingerprints
+    fingerprints = participant.fingerprints.all()
+    if not fingerprints:
+        print("[ERROR] No fingerprints found for participant.")
+        return JsonResponse({"error": "No fingerprints found.", "participant_id": participant_id}, status=404)
+
+    print(f"[DEBUG] Found {len(fingerprints)} fingerprints for participant.")
+
+    results = []
+    predicted_blood_group = None
+    
+    for fp in fingerprints:
+        print(f"[DEBUG] Processing fingerprint for finger: {fp.finger}")
+        if fp.image and os.path.exists(fp.image.path):
+            try:
+                print(f"[DEBUG] Classifying fingerprint: {fp.image.path}")
+                pred = classify_blood_group_from_multiple([fp.image.path])
+                predicted_blood_group = pred['predicted_blood_group']
+                print(f"[DEBUG] Classification result: {predicted_blood_group}")
+                results.append({
+                    "finger": fp.finger,
+                    "filename": os.path.basename(fp.image.path),
+                    "predicted_blood_group": pred['predicted_blood_group'],
+                    "confidence": pred['confidence'],
+                    "all_probabilities": pred.get('all_probabilities'),
+                })
+            except Exception as e:
+                print(f"[ERROR] Failed to classify fingerprint: {e}")
+                results.append({"finger": fp.finger, "error": str(e)})
+        else:
+            print(f"[WARNING] Fingerprint image not found or invalid for finger {fp.finger}.")
+            results.append({"finger": fp.finger, "error": "Image not found"})
+
+    print(f"[DEBUG] Final results: {results}")
+    return JsonResponse({"participant_id": participant_id, "results": results, "predicted_blood_group": predicted_blood_group})
+
+@api.post("/identify-blood-group-from-json/")
+def identify_blood_group_from_json(request, json_data: str = Form(...), files: list = None):
+    """
+    Identify blood group for each uploaded fingerprint image, using metadata from JSON (consent=false flow).
+    """
+    if not BLOOD_GROUP_AVAILABLE:
+        return JsonResponse({
+            "success": False,
+            "error": "Blood group classification service is not available in this deployment"
+        }, status=503)
+    
+    import tempfile
+    import shutil
+    import json as pyjson
+    
+    results = []
+    temp_paths = []
+    predicted_blood_group = None
+    
+    try:
+        data = pyjson.loads(json_data)
+        fingerprints_meta = data.get('fingerprints', [])
+        
+        if files:
+            # Map image_name to file
+            file_map = {f.name: f for f in files}
+            
+            for fp_meta in fingerprints_meta:
+                img_name = fp_meta.get('image_name')
+                f = file_map.get(img_name)
+                if not f:
+                    results.append({"image_name": img_name, "error": "No file uploaded for this fingerprint"})
+                    continue
+                    
+                temp_fd, temp_path = tempfile.mkstemp(suffix='.png')
+                os.close(temp_fd)
+                
+                with open(temp_path, 'wb') as out:
+                    f.file.seek(0)
+                    shutil.copyfileobj(f.file, out)
+                temp_paths.append(temp_path)
+                
+                try:
+                    pred = classify_blood_group_from_multiple([temp_path])
+                    predicted_blood_group = pred['predicted_blood_group']
+                    results.append({
+                        "finger": fp_meta.get('finger'),
+                        "image_name": img_name,
+                        "predicted_blood_group": pred['predicted_blood_group'],
+                        "confidence": pred['confidence'],
+                        "all_probabilities": pred.get('all_probabilities'),
+                    })
+                except Exception as e:
+                    results.append({
+                        "finger": fp_meta.get('finger'),
+                        "image_name": img_name,
+                        "error": str(e)
+                    })
+                    
+        return JsonResponse({"success": True, "results": results, "predicted_blood_group": predicted_blood_group})
+        
+    except Exception as e:
+        return JsonResponse({"success": False, "error": f"Blood group identification failed: {e}"}, status=500)
+    finally:
+        for p in temp_paths:
+            try:
+                if os.path.exists(p):
+                    os.unlink(p)
+            except Exception:
+                pass
