@@ -235,7 +235,28 @@ def submit(
                 "message": "Database save failed"
             }
     else:
-        # Don't save, just return basic info
+        # Don't save, just return basic info with fingerprint metadata for blood group prediction
+        fingerprints_info = []
+        fingerprint_files = {
+            'left_thumb': left_thumb,
+            'left_index': left_index,
+            'left_middle': left_middle,
+            'left_ring': left_ring,
+            'left_pinky': left_pinky,
+            'right_thumb': right_thumb,
+            'right_index': right_index,
+            'right_middle': right_middle,
+            'right_ring': right_ring,
+            'right_pinky': right_pinky,
+        }
+        
+        for finger_name, file in fingerprint_files.items():
+            if file and file.name:  # Check if file is provided
+                fingerprints_info.append({
+                    "finger": finger_name,
+                    "image_name": file.name
+                })
+        
         return {
             "saved": False,
             "message": "Data not saved due to consent=false.",
@@ -255,6 +276,7 @@ def submit(
                 "condition_controlled": condition_controlled,
                 "last_donation_date": last_donation_date,
             },
+            "fingerprints": fingerprints_info,
         }
 
 @api.post("/predict-diabetes/")
