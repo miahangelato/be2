@@ -182,7 +182,7 @@ else:
     CORS_ALLOWED_ORIGINS = [
         "http://localhost:3000",  # Local development
         "http://127.0.0.1:3000",  # Local development
-        "https://your-app.vercel.app",  # Vercel deployment (update this)
+        "https://fe-zeta-bay.vercel.app/",  # Vercel deployment (update this)
     ]
     CORS_ALLOW_ALL_ORIGINS = False
 
