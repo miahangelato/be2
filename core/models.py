@@ -13,14 +13,14 @@ def fingerprint_upload_path(instance, filename):
     # Extract file extension
     file_extension = filename.split('.')[-1] if '.' in filename else 'png'
     
-    # Get participant data with N/A for missing values
-    age = participant.age if participant.age else "N/A"
-    weight = participant.weight if participant.weight else "N/A"
-    height = participant.height if participant.height else "N/A"
-    gender = participant.gender if participant.gender else "N/A"
+    # Get participant data with safe values for filenames
+    age = participant.age if participant.age else "Unknown"
+    weight = f"{participant.weight}kg" if participant.weight else "Unknown"
+    height = participant.height if participant.height else "Unknown"
+    gender = participant.gender if participant.gender else "Unknown"
     
-    # Get blood type - use result if available, otherwise participant's input, otherwise N/A
-    blood_type = "N/A"
+    # Get blood type - use result if available, otherwise participant's input, otherwise Unknown
+    blood_type = "Unknown"
     if participant.blood_type and participant.blood_type != "unknown":
         blood_type = participant.blood_type
     else:
@@ -30,16 +30,33 @@ def fingerprint_upload_path(instance, filename):
             if latest_result.blood_group:
                 blood_type = latest_result.blood_group
         except:
-            blood_type = "N/A"
+            blood_type = "Unknown"
     
     # Get diabetes status from results
-    diabetes_status = "N/A"
+    diabetes_status = "Unknown"
     try:
         latest_result = participant.results.latest('created_at')
         if latest_result.diabetes_risk:
             diabetes_status = latest_result.diabetes_risk
     except:
-        diabetes_status = "N/A"
+        diabetes_status = "Unknown"
+    
+    # Clean values to be filesystem-safe (remove special characters)
+    def clean_filename_part(value):
+        """Remove characters that could cause filesystem issues"""
+        import re
+        # Convert to string and replace problematic characters
+        safe_value = str(value).replace('/', '_').replace('\\', '_').replace(':', '_')
+        safe_value = re.sub(r'[<>:"/\\|?*]', '_', safe_value)
+        return safe_value
+    
+    age = clean_filename_part(age)
+    weight = clean_filename_part(weight)
+    height = clean_filename_part(height)
+    blood_type = clean_filename_part(blood_type)
+    gender = clean_filename_part(gender)
+    diabetes_status = clean_filename_part(diabetes_status)
+    finger_name = clean_filename_part(finger_name)
     
     # Create filename: participant_ID_age_weight_height_bloodtype_gender_diabeticstatus_fingername.extension
     new_filename = f"participant_{participant_id}_{age}_{weight}_{height}_{blood_type}_{gender}_{diabetes_status}_{finger_name}.{file_extension}"

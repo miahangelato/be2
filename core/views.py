@@ -89,6 +89,17 @@ def submit(
     has_chronic_condition: str = Form(None),  # Changed to string to handle encrypted data
     condition_controlled: str = Form(None),  # Changed to string to handle encrypted data
     last_donation_date: str = Form(None),
+    # Fingerprint files (optional)
+    left_thumb: UploadedFile = File(None),
+    left_index: UploadedFile = File(None),
+    left_middle: UploadedFile = File(None),
+    left_ring: UploadedFile = File(None),
+    left_pinky: UploadedFile = File(None),
+    right_thumb: UploadedFile = File(None),
+    right_index: UploadedFile = File(None),
+    right_middle: UploadedFile = File(None),
+    right_ring: UploadedFile = File(None),
+    right_pinky: UploadedFile = File(None),
 ):
     received_data = {
         "consent": consent,
@@ -177,10 +188,44 @@ def submit(
                 consent=True  # Explicitly set consent
             )
 
+            # Save fingerprint files if provided
+            fingerprint_files = {
+                'left_thumb': left_thumb,
+                'left_index': left_index,
+                'left_middle': left_middle,
+                'left_ring': left_ring,
+                'left_pinky': left_pinky,
+                'right_thumb': right_thumb,
+                'right_index': right_index,
+                'right_middle': right_middle,
+                'right_ring': right_ring,
+                'right_pinky': right_pinky,
+            }
+            
+            saved_fingerprints = []
+            for finger_name, file in fingerprint_files.items():
+                if file and file.name:  # Check if file is provided
+                    try:
+                        # Save fingerprint to database
+                        fingerprint = Fingerprint.objects.create(
+                            participant=participant,
+                            finger=finger_name,  # Use 'finger' not 'finger_name'
+                            pattern=''  # Leave pattern empty for now
+                        )
+                        
+                        # Save the actual file (Django will handle the path via upload_path function)
+                        fingerprint.image.save(file.name, file, save=True)
+                        saved_fingerprints.append(finger_name)
+                        
+                    except Exception as fp_error:
+                        logger.error(f"Failed to save fingerprint {finger_name}: {fp_error}")
+
             return {
                 "saved": True,
                 "participant_id": participant.id,
-                "message": f"Data saved successfully. Participant: {participant.id}"
+                "message": f"Data saved successfully. Participant: {participant.id}",
+                "fingerprints_saved": saved_fingerprints,
+                "fingerprints_count": len(saved_fingerprints)
             }
             
         except Exception as save_error:
@@ -418,22 +463,48 @@ def identify_blood_group_from_participant(request, participant_id: int):
     
     for fp in fingerprints:
         print(f"[DEBUG] Processing fingerprint for finger: {fp.finger}")
-        if fp.image and os.path.exists(fp.image.path):
+        if fp.image:
             try:
-                print(f"[DEBUG] Classifying fingerprint: {fp.image.path}")
-                pred = classify_blood_group_from_multiple([fp.image.path])
-                predicted_blood_group = pred['predicted_blood_group']
-                print(f"[DEBUG] Classification result: {predicted_blood_group}")
-                results.append({
-                    "finger": fp.finger,
-                    "filename": os.path.basename(fp.image.path),
-                    "predicted_blood_group": pred['predicted_blood_group'],
-                    "confidence": pred['confidence'],
-                    "all_probabilities": pred.get('all_probabilities'),
-                })
+                import tempfile
+                import shutil
+                
+                print(f"[DEBUG] Processing fingerprint image: {fp.image.name}")
+                
+                # Create temporary file from stored image
+                temp_fd, temp_path = tempfile.mkstemp(suffix='.png')
+                os.close(temp_fd)
+                
+                try:
+                    # Copy image content to temporary file
+                    with open(temp_path, 'wb') as temp_file:
+                        fp.image.seek(0)  # Reset file pointer
+                        shutil.copyfileobj(fp.image, temp_file)
+                    
+                    print(f"[DEBUG] Classifying fingerprint from temp file: {temp_path}")
+                    pred = classify_blood_group_from_multiple([temp_path])
+                    predicted_blood_group = pred['predicted_blood_group']
+                    print(f"[DEBUG] Classification result: {predicted_blood_group}")
+                    
+                    results.append({
+                        "finger": fp.finger,
+                        "filename": fp.image.name,
+                        "predicted_blood_group": pred['predicted_blood_group'],
+                        "confidence": pred['confidence'],
+                        "all_probabilities": pred.get('all_probabilities'),
+                    })
+                    
+                finally:
+                    # Clean up temporary file
+                    if os.path.exists(temp_path):
+                        os.unlink(temp_path)
+                        
             except Exception as e:
                 print(f"[ERROR] Failed to classify fingerprint: {e}")
-                results.append({"finger": fp.finger, "error": str(e)})
+                results.append({
+                    "finger": fp.finger,
+                    "filename": fp.image.name if fp.image else "unknown",
+                    "error": str(e)
+                })
         else:
             print(f"[WARNING] Fingerprint image not found or invalid for finger {fp.finger}.")
             results.append({"finger": fp.finger, "error": "Image not found"})
@@ -511,3 +582,234 @@ def identify_blood_group_from_json(request, json_data: str = Form(...), files: L
                     os.unlink(p)
             except Exception:
                 pass
+
+@api.post("/process-fingerprint/")
+def process_fingerprint(request):
+    """
+    Process fingerprint data and participant information from scanner API.
+    This endpoint handles the complete data processing pipeline.
+    """
+    try:
+        import json as pyjson
+        import base64
+        import tempfile
+        import os
+        
+        logger.info("Processing fingerprint data from scanner")
+        
+        # Get the JSON data from request
+        data = request.body
+        if isinstance(data, bytes):
+            data = data.decode('utf-8')
+        
+        parsed_data = pyjson.loads(data)
+        
+        # Extract participant data, fingerprint data, and frontend callback URL
+        participant_data = parsed_data.get('participant_data', {})
+        fingerprint_data = parsed_data.get('fingerprint_data', {})
+        finger_name = fingerprint_data.get('finger_name', parsed_data.get('finger_name', 'unknown'))
+        frontend_callback_url = parsed_data.get('frontend_callback_url')
+        
+        logger.info(f"Processing data for finger: {finger_name}")
+        logger.info(f"Participant ID: {participant_data.get('participant_id', 'N/A')}")
+        logger.info(f"Fingerprint data keys: {list(fingerprint_data.keys())}")
+        logger.info(f"Has fingerprint image: {'image' in fingerprint_data}")
+        
+        if frontend_callback_url:
+            logger.info(f"Frontend callback URL provided: {frontend_callback_url}")
+        
+        # Initialize response
+        response_data = {
+            "success": True,
+            "finger_name": finger_name,
+            "participant_id": participant_data.get('participant_id'),
+            "processing_results": {}
+        }
+        
+        # Helper function to safely convert values (same as in submit endpoint)
+        def safe_convert(value, target_type, fallback=None):
+            try:
+                if value is None or value == "":
+                    return fallback
+                if target_type == int:
+                    return int(float(str(value)))
+                elif target_type == float:
+                    return float(str(value))
+                elif target_type == str:
+                    return str(value)
+                else:
+                    return value
+            except (ValueError, TypeError):
+                return fallback
+        
+        def str_to_bool(value):
+            if isinstance(value, str):
+                return value.lower() in ('true', '1', 'yes')
+            return value
+        
+        # Process participant data if provided
+        if participant_data:
+            try:
+                # Save participant to database if consent is given
+                consent = participant_data.get('consent', False)
+                if consent:
+                    participant = Participant.objects.create(
+                        age=safe_convert(participant_data.get('age'), int),
+                        height=safe_convert(participant_data.get('height'), float),
+                        weight=safe_convert(participant_data.get('weight'), float),
+                        gender=participant_data.get('gender', ''),
+                        blood_type=participant_data.get('blood_type', ''),
+                        willing_to_donate=participant_data.get('willing_to_donate', False),
+                        sleep_hours=safe_convert(participant_data.get('sleep_hours'), int),
+                        had_alcohol_last_24h=str_to_bool(participant_data.get('had_alcohol_last_24h')),
+                        ate_before_donation=str_to_bool(participant_data.get('ate_before_donation')),
+                        ate_fatty_food=str_to_bool(participant_data.get('ate_fatty_food')),
+                        recent_tattoo_or_piercing=str_to_bool(participant_data.get('recent_tattoo_or_piercing')),
+                        has_chronic_condition=str_to_bool(participant_data.get('has_chronic_condition')),
+                        condition_controlled=str_to_bool(participant_data.get('condition_controlled')),
+                        last_donation_date=participant_data.get('last_donation_date'),
+                        consent=True
+                    )
+                    
+                    response_data["participant_saved"] = True
+                    response_data["participant_id"] = participant.id
+                    
+                    # Run diabetes prediction
+                    try:
+                        predictor = DiabetesPredictor()
+                        prediction_result = predictor.predict_diabetes_risk(participant)
+                        
+                        if not prediction_result.get('error'):
+                            # Save diabetes result
+                            result = Result.objects.create(
+                                participant=participant,
+                                diabetes_risk=prediction_result['risk'],
+                                confidence_score=prediction_result['confidence']
+                            )
+                            
+                            response_data["processing_results"]["diabetes_prediction"] = {
+                                "risk": prediction_result['risk'],
+                                "confidence": prediction_result['confidence'],
+                                "result_id": result.id
+                            }
+                        else:
+                            response_data["processing_results"]["diabetes_prediction"] = {
+                                "error": prediction_result['error']
+                            }
+                    except Exception as e:
+                        logger.error(f"Diabetes prediction failed: {e}")
+                        response_data["processing_results"]["diabetes_prediction"] = {
+                            "error": f"Diabetes prediction failed: {str(e)}"
+                        }
+                else:
+                    response_data["participant_saved"] = False
+                    response_data["message"] = "Participant data not saved due to missing consent"
+                    
+            except Exception as e:
+                logger.error(f"Failed to save participant data: {e}")
+                response_data["participant_saved"] = False
+                response_data["participant_error"] = str(e)
+        
+        # Process fingerprint data if provided
+        if fingerprint_data and BLOOD_GROUP_AVAILABLE:
+            try:
+                # Get base64 image data
+                image_data = fingerprint_data.get('image')
+                if image_data:
+                    # Decode base64 image
+                    image_bytes = base64.b64decode(image_data)
+                    
+                    # Create temporary file
+                    temp_fd, temp_path = tempfile.mkstemp(suffix='.png')
+                    os.close(temp_fd)
+                    
+                    try:
+                        # Write image to temporary file
+                        with open(temp_path, 'wb') as f:
+                            f.write(image_bytes)
+                        
+                        # Run blood group classification
+                        blood_group_result = classify_blood_group_from_multiple([temp_path])
+                        
+                        response_data["processing_results"]["blood_group_classification"] = {
+                            "predicted_blood_group": blood_group_result['predicted_blood_group'],
+                            "confidence": blood_group_result['confidence'],
+                            "all_probabilities": blood_group_result.get('all_probabilities')
+                        }
+                        
+                    finally:
+                        # Clean up temporary file
+                        if os.path.exists(temp_path):
+                            os.unlink(temp_path)
+                            
+            except Exception as e:
+                logger.error(f"Blood group classification failed: {e}")
+                response_data["processing_results"]["blood_group_classification"] = {
+                    "error": f"Blood group classification failed: {str(e)}"
+                }
+        elif fingerprint_data and not BLOOD_GROUP_AVAILABLE:
+            response_data["processing_results"]["blood_group_classification"] = {
+                "error": "Blood group classification service is not available in this deployment"
+            }
+        
+        # Save fingerprint data if participant was saved and fingerprint exists
+        if response_data.get("participant_saved") and fingerprint_data:
+            try:
+                participant = Participant.objects.get(id=response_data["participant_id"])
+                fingerprint = Fingerprint.objects.create(
+                    participant=participant,
+                    finger_name=finger_name,
+                    image_data=fingerprint_data.get('image', ''),
+                    upload_path=f"fingerprint_images/participant_{participant.id}/"
+                )
+                response_data["fingerprint_saved"] = True
+                response_data["fingerprint_id"] = fingerprint.id
+                
+            except Exception as e:
+                logger.error(f"Failed to save fingerprint: {e}")
+                response_data["fingerprint_saved"] = False
+                response_data["fingerprint_error"] = str(e)
+        
+        logger.info("Fingerprint processing completed successfully")
+        
+        # Send response directly to frontend if callback URL is provided
+        if frontend_callback_url:
+            try:
+                import requests
+                logger.info(f"Sending response directly to frontend: {frontend_callback_url}")
+                
+                # Send the complete response to frontend
+                frontend_response = requests.post(
+                    frontend_callback_url,
+                    json=response_data,
+                    headers={'Content-Type': 'application/json'},
+                    timeout=10
+                )
+                
+                if frontend_response.status_code == 200:
+                    logger.info("✅ Successfully sent response to frontend")
+                    # Return simple acknowledgment to scanner
+                    return JsonResponse({
+                        "success": True,
+                        "message": "Processing completed and sent to frontend",
+                        "frontend_delivery": "success"
+                    })
+                else:
+                    logger.warning(f"Failed to send to frontend: {frontend_response.status_code}")
+                    # Return full response to scanner as fallback
+                    return JsonResponse(response_data)
+                    
+            except Exception as e:
+                logger.error(f"Failed to send response to frontend: {e}")
+                # Return full response to scanner as fallback
+                return JsonResponse(response_data)
+        else:
+            # No frontend callback, return response to scanner as before
+            return JsonResponse(response_data)
+        
+    except Exception as e:
+        logger.error(f"Process fingerprint endpoint failed: {e}")
+        return JsonResponse({
+            "success": False,
+            "error": f"Processing failed: {str(e)}"
+        }, status=500)
