@@ -608,7 +608,12 @@ def process_fingerprint(request):
         participant_data = parsed_data.get('participant_data', {})
         fingerprint_data = parsed_data.get('fingerprint_data', {})
         finger_name = fingerprint_data.get('finger_name', parsed_data.get('finger_name', 'unknown'))
-        frontend_callback_url = parsed_data.get('frontend_callback_url')
+        
+        # Check for frontend callback URL in both header and body
+        frontend_callback_url = (
+            request.headers.get('X-Frontend-Callback-URL') or 
+            parsed_data.get('frontend_callback_url')
+        )
         
         logger.info(f"Processing data for finger: {finger_name}")
         logger.info(f"Participant ID: {participant_data.get('participant_id', 'N/A')}")
@@ -617,6 +622,8 @@ def process_fingerprint(request):
         
         if frontend_callback_url:
             logger.info(f"Frontend callback URL provided: {frontend_callback_url}")
+        else:
+            logger.info("No frontend callback URL provided - using traditional response")
         
         # Initialize response
         response_data = {
