@@ -14,14 +14,14 @@ logger = logging.getLogger(__name__)
 
 class DiabetesPredictor:
     def __init__(self):
-        # AWS S3 URLs for diabetes models
+        # AWS S3 URLs for diabetes models (matching the blood group classifier pattern)
         self.s3_urls = {
-            'A': "https://team3thesis.s3.us-east-1.amazonaws.com/models/backend/core/diabetes_risk_model.pkl",
-            'B': "https://team3thesis.s3.us-east-1.amazonaws.com/models/backend/core/diabetes_risk_model_B.pkl",
+            'A': "https://team3thesis.s3.us-east-1.amazonaws.com/models/backend/core%5Cdiabetes_risk_model.pkl",
+            'B': "https://team3thesis.s3.us-east-1.amazonaws.com/models/backend/core%5Cdiabetes_risk_model_B.pkl",
         }
         self.s3_cols_urls = {
-            'A': "https://team3thesis.s3.us-east-1.amazonaws.com/models/backend/core/diabetes_risk_model_columns.pkl",
-            'B': "https://team3thesis.s3.us-east-1.amazonaws.com/models/backend/core/diabetes_risk_model_columns_B.pkl",
+            'A': "https://team3thesis.s3.us-east-1.amazonaws.com/models/backend/core%5Cdiabetes_risk_model_columns.pkl",
+            'B': "https://team3thesis.s3.us-east-1.amazonaws.com/models/backend/core%5Cdiabetes_risk_model_columns_B.pkl",
         }
         
         # Fallback to local paths if S3 fails
