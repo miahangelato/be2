@@ -9,7 +9,7 @@ restartPolicyMaxRetries = 3
 healthcheckGracePeriod = "300s"
 
 [environments]
-production.packageOverrides = ["python311", "libgl1-mesa-glx", "libglib2.0-0", "postgresql-client"]
+production.packageOverrides = ["python311", "libgl1-mesa-glx", "libglib2.0-0", "postgresql-client", "libglib2.0-0", "libsm6", "libxext6", "libxrender-dev", "libgomp1"]
 
 [[healthchecks]]
 interval = "30s"

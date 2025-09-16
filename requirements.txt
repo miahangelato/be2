@@ -23,3 +23,5 @@ pytz==2025.2
 asgiref==3.9.1
 sqlparse==0.5.3
 tzdata==2025.2
+opencv-python-headless==4.8.1.78
+python-dotenv==1.1.1

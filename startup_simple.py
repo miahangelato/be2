@@ -34,6 +34,13 @@ def main():
     print(f"🌟 Starting Django server on port {port}")
     print(f"🔧 Debug Mode: {os.environ.get('DEBUG', 'False')}")
     
+    # Check database configuration
+    db_url = os.environ.get('DATABASE_URL')
+    if db_url:
+        print(f"📊 Database URL configured: {db_url[:20]}...")
+    else:
+        print("⚠️ No DATABASE_URL found - check Railway environment variables")
+    
     # Setup Django
     try:
         django.setup()
@@ -57,6 +64,17 @@ def main():
         print("✅ Database connection successful")
     except Exception as db_error:
         print(f"⚠️ WARNING: Database connection test failed: {db_error}")
+    
+    # Create static directories if they don't exist
+    try:
+        from django.conf import settings
+        static_dirs = getattr(settings, 'STATICFILES_DIRS', [])
+        for static_dir in static_dirs:
+            if not os.path.exists(static_dir):
+                os.makedirs(static_dir, exist_ok=True)
+                print(f"✅ Created static directory: {static_dir}")
+    except Exception as e:
+        print(f"⚠️ Could not create static directories: {e}")
     
     # Collect static files (if needed)
     try:
