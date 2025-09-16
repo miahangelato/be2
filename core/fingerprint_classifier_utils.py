@@ -81,10 +81,20 @@ The model will be downloaded once and cached locally for future use.
         """.strip()
         raise Exception(error_msg)
 
-# Load the model using S3 URL with local fallback
-model = load_model_with_fallback(MODEL_PATH, MODEL_S3_URL)
+# Global variable to store the loaded model
+_model = None
+
+def get_model():
+    """Lazy load the model only when needed"""
+    global _model
+    if _model is None:
+        print("Loading fingerprint classification model...")
+        _model = load_model_with_fallback(MODEL_PATH, MODEL_S3_URL)
+        print("✅ Fingerprint model loaded successfully")
+    return _model
 
 def classify_fingerprint_pattern(img_file):
+    model = get_model()  # Lazy load the model
     img = image.load_img(img_file, color_mode="grayscale", target_size=(128, 128))
     x = image.img_to_array(img)
     x = np.expand_dims(x, axis=0) / 255.0

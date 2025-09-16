@@ -22,6 +22,9 @@ def main():
     # Set deployment flag for settings
     if is_railway:
         os.environ['RAILWAY_DEPLOYMENT'] = 'True'
+        # Suppress TensorFlow warnings in production
+        os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
+        os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'
     else:
         # For local development, try to load .env file
         try:
