@@ -5,6 +5,7 @@ core/diabetes_risk_model_columns.pkl
 core/diabetes_risk_model.pkl
 core/encryption_key.key
 core/.env
+core/scanner.py
 
 *.md
 *.log
