@@ -35,7 +35,7 @@ except ImportError:
 # See https://docs.djangoproject.com/en/5.2/howto/deployment/checklist/
 
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = os.getenv('DJANGO_SECRET_KEY', 'your-default-secret-key')
+SECRET_KEY = os.getenv('DJANGO_SECRET_KEY')
 
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = os.getenv('DEBUG', 'False').lower() == 'true'
@@ -47,10 +47,11 @@ ALLOWED_HOSTS = [
     '.herokuapp.com',  # Allow all Heroku subdomains
     '.ngrok-free.app',  # For development testing
     '.ngrok.io',  # For development testing
+    '.up.railway.app',  # Allow all Railway subdomains
+    'be2-production.up.railway.app',  # Your specific Railway domain
 ]
 
-# Add your specific Heroku app domain when you create it
-# ALLOWED_HOSTS.append('your-app-name.herokuapp.com')
+# Railway domains now included
 
 
 # Application definition
@@ -101,27 +102,51 @@ TEMPLATES = [
 WSGI_APPLICATION = 'backend.wsgi.application'
 
 
-# Database - PostgreSQL for production (Heroku), SQLite for development
+# Database - PostgreSQL for both development and production
 # https://docs.djangoproject.com/en/5.2/ref/settings/#databases
 
-# Use DATABASE_URL from Heroku if available, otherwise use local PostgreSQL
 import dj_database_url
+import os
 
-if os.getenv('DATABASE_URL'):
-    # Production database (Heroku PostgreSQL)
+# Check if we have a DATABASE_URL environment variable
+db_url = os.environ.get('DATABASE_URL')
+
+if db_url:
+    # PostgreSQL configuration from DATABASE_URL
+    is_railway = bool(os.environ.get('RAILWAY_ENVIRONMENT'))
+    
+    # Railway handles SSL internally, so we don't need to force it
+    ssl_required = False if is_railway else True
+    
+    # Configure database from URL - use the standard parameters
     DATABASES = {
-        'default': dj_database_url.parse(os.getenv('DATABASE_URL'))
+        'default': dj_database_url.config(
+            default=db_url,
+            conn_max_age=600, 
+            ssl_require=ssl_required
+        )
     }
+    
+    # Add PostgreSQL-specific options after parsing the URL
+    if DATABASES['default']['ENGINE'] == 'django.db.backends.postgresql':
+        DATABASES['default']['OPTIONS'] = {
+            'options': '-c timezone=UTC'
+        }
 else:
-    # Local development database
+    # Fallback to manual PostgreSQL configuration if DATABASE_URL is not present
     DATABASES = {
         'default': {
             'ENGINE': 'django.db.backends.postgresql',
-            'NAME': os.getenv('DB_NAME'),
-            'USER': os.getenv('DB_USER'),
-            'PASSWORD': os.getenv('DB_PASSWORD'),
-            'HOST': os.getenv('DB_HOST'),
-            'PORT': os.getenv('DB_PORT'),
+            'NAME': os.environ.get('DB_NAME', 'thesis'),
+            'USER': os.environ.get('DB_USER', 'postgres'),
+            'PASSWORD': os.environ.get('DB_PASSWORD', '123ediwow'),
+            'HOST': os.environ.get('DB_HOST', 'localhost'),
+            'PORT': os.environ.get('DB_PORT', '5432'),
+            'CONN_MAX_AGE': 600,
+            'OPTIONS': {
+                'sslmode': 'prefer',
+                'options': '-c timezone=UTC',
+            },
         }
     }
 
@@ -179,7 +204,7 @@ STATIC_ROOT = os.path.join(BASE_DIR, 'static', 'static_root')
 MEDIA_URL = 'media/'
 MEDIA_ROOT = os.path.join(BASE_DIR, 'media', 'media_root')
 
-# AWS S3 Security Configuration - ENHANCED FOR ENCRYPTION
+# AWS S3 Security Configuration - SECURE FOR PRODUCTION
 AWS_ACCESS_KEY_ID = os.getenv('AWS_ACCESS_KEY_ID')
 AWS_SECRET_ACCESS_KEY = os.getenv('AWS_SECRET_ACCESS_KEY')
 AWS_STORAGE_BUCKET_NAME = os.getenv('AWS_STORAGE_BUCKET_NAME')
@@ -187,26 +212,24 @@ AWS_S3_REGION_NAME = os.getenv('AWS_S3_REGION_NAME', 'us-east-1')
 AWS_S3_CUSTOM_DOMAIN = os.getenv('AWS_S3_CUSTOM_DOMAIN')
 AWS_S3_FILE_OVERWRITE = os.getenv('AWS_S3_FILE_OVERWRITE', 'False') == 'True'
 
-# FORCE ENCRYPTION - This ensures all uploads are encrypted
-AWS_DEFAULT_ACL = 'private'  # Make all files private by default
+# SECURE ACL - Use private for security, but allow public read for media if needed
+AWS_DEFAULT_ACL = 'private'  # Keep private for security
 AWS_S3_OBJECT_PARAMETERS = {
-    'CacheControl': 'max-age=86400',  # Cache for 24 hours
-    'ServerSideEncryption': 'AES256',  # FORCE ENCRYPTION ON EVERY UPLOAD
+    'CacheControl': 'max-age=86400',
+    'ServerSideEncryption': 'AES256',
     'ACL': 'private',  # Force private ACL
-    'ContentDisposition': 'attachment',  # Force download instead of inline viewing
+    'ContentDisposition': 'attachment',
     'Metadata': {
         'uploaded-by': 'fingerprint-app',
         'security-level': 'high',
         'content-policy': 'restricted'
     }
 }
-AWS_S3_USE_SSL = True  # Force HTTPS
-AWS_S3_VERIFY = True  # Verify SSL certificates
-AWS_QUERYSTRING_AUTH = True  # Use signed URLs for access
-AWS_QUERYSTRING_EXPIRE = 1800  # URLs expire after 30 minutes (more secure)
-AWS_S3_SIGNATURE_VERSION = 's3v4'  # Use latest signature version
-
-# Additional Security
+AWS_S3_USE_SSL = True
+AWS_S3_VERIFY = True
+AWS_QUERYSTRING_AUTH = True  # Use signed URLs for secure access
+AWS_QUERYSTRING_EXPIRE = 1800
+AWS_S3_SIGNATURE_VERSION = 's3v4'
 AWS_PRELOAD_METADATA = True
 AWS_S3_ADDRESSING_STYLE = 'virtual'
 
@@ -215,9 +238,8 @@ STORAGES = {
         "BACKEND": "storages.backends.s3boto3.S3Boto3Storage",
         "OPTIONS": {
             "location": AWS_MEDIA_LOCATION,
-            "default_acl": AWS_DEFAULT_ACL,
-            "querystring_auth": AWS_QUERYSTRING_AUTH,
-            "querystring_expire": AWS_QUERYSTRING_EXPIRE,
+            "default_acl": 'public-read',  # Make media files publicly accessible
+            "querystring_auth": False,  # No need for signed URLs if public
             "object_parameters": AWS_S3_OBJECT_PARAMETERS,
             "use_ssl": AWS_S3_USE_SSL,
             "signature_version": AWS_S3_SIGNATURE_VERSION,

@@ -1,9 +1,19 @@
 [build]
 builder = "nixpacks"
-buildCommand = "pip install --upgrade pip && pip install --no-cache-dir -r requirements.txt"
+buildCommand = "pip install --upgrade pip && pip install --no-cache-dir -r requirements.txt && python download_models_improved.py"
 
 [deploy]
-startCommand = "python manage.py migrate && gunicorn backend.wsgi:application --bind 0.0.0.0:$PORT"
+startCommand = "python startup.py"
+restartPolicyType = "ON_FAILURE"
+restartPolicyMaxRetries = 5
 
 [environments]
-production.packageOverrides = ["python311", "libgl1-mesa-glx", "libglib2.0-0"]
+production.packageOverrides = ["python311", "libgl1-mesa-glx", "libglib2.0-0", "postgresql-client"]
+
+[[healthchecks]]
+interval = "30s"
+timeout = "10s"
+method = "GET"
+path = "/admin/login/"
+port = "8000"
+initialDelay = "30s"

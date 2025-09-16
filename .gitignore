@@ -30,6 +30,14 @@ docs/
 notebooks/
 .env.secure
 .env
+.env.*
+*.key
+encryption_key.*
+*_key.*
+secrets.json
+credentials.json
+.railway.json
+.railway.toml
 
 # Exclude migrations folder
 migrations/

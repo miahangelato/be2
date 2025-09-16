@@ -22,6 +22,47 @@ def main():
     # Set deployment flag for settings
     if is_railway:
         os.environ['RAILWAY_DEPLOYMENT'] = 'True'
+    else:
+        # For local development, try to load .env file
+        try:
+            from dotenv import load_dotenv
+            env_path = os.path.join(os.path.dirname(__file__), '.env')
+            if os.path.exists(env_path):
+                load_dotenv(env_path)
+                print(f"✅ Loaded environment variables from .env file")
+            else:
+                print(f"⚠️ No .env file found at {env_path}")
+        except ImportError:
+            print("⚠️ python-dotenv not installed, skipping .env loading")
+            pass
+    
+    # Detect DB type for better error messages
+    db_url = os.environ.get('DATABASE_URL', '')
+    if db_url.startswith('postgres'):
+        print("� Using PostgreSQL database")
+        
+        # Check for psycopg2 installation
+        try:
+            import psycopg2
+            print("✅ psycopg2 is installed")
+        except ImportError:
+            print("❌ ERROR: psycopg2 is not installed! Install with: pip install psycopg2-binary")
+            
+        # Parse PostgreSQL connection details for debugging
+        from urllib.parse import urlparse
+        try:
+            parsed = urlparse(db_url)
+            host = parsed.hostname or os.environ.get('DB_HOST', 'unknown')
+            port = parsed.port or os.environ.get('DB_PORT', '5432')
+            dbname = parsed.path[1:] if parsed.path else os.environ.get('DB_NAME', 'unknown')
+            
+            print(f"📊 PostgreSQL connection details:")
+            print(f"   - Host: {host}")
+            print(f"   - Port: {port}")
+            print(f"   - Database: {dbname}")
+            print(f"   - SSL Mode: {'Required' if not bool(os.environ.get('RAILWAY_ENVIRONMENT')) else 'Not required for Railway'}")
+        except Exception as e:
+            print(f"⚠️ Could not parse DATABASE_URL: {e}")
     
     # Setup Django
     django.setup()
@@ -61,18 +102,52 @@ def main():
     except Exception as e:
         print(f"⚠️ Static files warning: {e}")
     
+    # Check database connection
+    try:
+        from django.db import connection
+        connection.ensure_connection()
+        
+        # Get PostgreSQL version if connected
+        if connection.vendor == 'postgresql':
+            with connection.cursor() as cursor:
+                cursor.execute("SELECT version();")
+                version = cursor.fetchone()[0]
+                print(f"✅ PostgreSQL connection successful: {version.split(',')[0]}")
+                
+                # Test a simple query to verify full functionality
+                cursor.execute("SELECT COUNT(*) FROM pg_catalog.pg_tables;")
+                table_count = cursor.fetchone()[0]
+                print(f"✅ Database contains {table_count} tables")
+        else:
+            print(f"✅ Database connection successful: {connection.vendor}")
+            
+    except Exception as db_error:
+        print(f"⚠️ WARNING: Database connection test failed: {db_error}")
+        print("🔍 Common PostgreSQL issues:")
+        print("   - Check that PostgreSQL service is running")
+        print("   - Verify database name, username and password are correct")
+        print("   - Confirm host and port are accessible from this environment")
+        print("   - On Railway: check that the DATABASE_URL is correctly set")
+        print("🔄 Will still attempt to start server...")
+    
     # Start the server
     if os.environ.get('RAILWAY_DEPLOYMENT') == 'True':
         # Production: Use gunicorn
         import subprocess
         print("🔥 Starting Gunicorn server...")
-        subprocess.run([
-            'gunicorn', 
-            '--bind', f'0.0.0.0:{port}',
-            '--workers', '2',
-            '--timeout', '120',
-            'backend.wsgi:application'
-        ])
+        try:
+            process = subprocess.run([
+                'gunicorn', 
+                '--bind', f'0.0.0.0:{port}',
+                '--workers', '2',
+                '--timeout', '120',
+                '--log-level', 'debug',  # Increased log level for troubleshooting
+                'backend.wsgi:application'
+            ], check=True)
+            if process.returncode != 0:
+                print(f"⚠️ WARNING: Gunicorn exited with code {process.returncode}")
+        except Exception as e:
+            print(f"❌ ERROR starting Gunicorn: {e}")
     else:
         # Development: Use Django dev server
         execute_from_command_line(['manage.py', 'runserver', f'0.0.0.0:{port}'])
