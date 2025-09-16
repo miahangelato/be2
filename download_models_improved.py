@@ -24,19 +24,19 @@ MODELS = [
     {
         "name": "Blood Group Model",
         "local_path": "core/bloodgroup_model_20250823-140933.h5",
-        "s3_url": "https://team3thesis.s3.us-east-1.amazonaws.com/models/backend/core/bloodgroup_model_20250823-140933.h5",
+        "s3_url": "https://team3thesis.s3.us-east-1.amazonaws.com/models/backend/core%5Cbloodgroup_model_20250823-140933.h5",
         "expected_size_mb": 15,  # Approximate size in MB
     },
     {
         "name": "Diabetes Risk Model",
         "local_path": "core/diabetes_risk_model.pkl",
-        "s3_url": "https://team3thesis.s3.us-east-1.amazonaws.com/models/backend/core/diabetes_risk_model.pkl",
+        "s3_url": "https://team3thesis.s3.us-east-1.amazonaws.com/models/backend/core%5Cdiabetes_risk_model.pkl",
         "expected_size_mb": 2,  # Approximate size in MB
     },
     {
         "name": "Diabetes Model Columns",
         "local_path": "core/diabetes_risk_model_columns.pkl",
-        "s3_url": "https://team3thesis.s3.us-east-1.amazonaws.com/models/backend/core/diabetes_risk_model_columns.pkl",
+        "s3_url": "https://team3thesis.s3.us-east-1.amazonaws.com/models/backend/core%5Cdiabetes_risk_model_columns.pkl",
         "expected_size_mb": 1,  # Approximate size in MB
     }
 ]

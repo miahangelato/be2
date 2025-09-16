@@ -9,7 +9,7 @@ import requests
 import tempfile
 
 MODEL_PATH = os.path.join(settings.BASE_DIR, "core", "improved_pattern_cnn_model.h5")
-MODEL_S3_URL = "https://team3thesis.s3.us-east-1.amazonaws.com/models/backend/core%5Cimproved_pattern_cnn_model.h5"
+MODEL_S3_URL = "https://team3thesis.s3.us-east-1.amazonaws.com/models/backend/core/improved_pattern_cnn_model.h5"
 CLASS_NAMES = ["Arc", "Whorl", "Loop"]
 
 def load_model_from_s3_url(url, cache_path=None):

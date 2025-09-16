@@ -213,11 +213,11 @@ AWS_S3_CUSTOM_DOMAIN = os.getenv('AWS_S3_CUSTOM_DOMAIN')
 AWS_S3_FILE_OVERWRITE = os.getenv('AWS_S3_FILE_OVERWRITE', 'False') == 'True'
 
 # SECURE ACL - Use private for security, but allow public read for media if needed
-AWS_DEFAULT_ACL = 'private'  # Keep private for security
+AWS_DEFAULT_ACL = 'private'  # Keep private for security by default
 AWS_S3_OBJECT_PARAMETERS = {
     'CacheControl': 'max-age=86400',
     'ServerSideEncryption': 'AES256',
-    'ACL': 'private',  # Force private ACL
+    'ACL': 'private',  # Force private ACL for uploaded files
     'ContentDisposition': 'attachment',
     'Metadata': {
         'uploaded-by': 'fingerprint-app',
@@ -225,6 +225,17 @@ AWS_S3_OBJECT_PARAMETERS = {
         'content-policy': 'restricted'
     }
 }
+
+# Separate configuration for public model files
+AWS_S3_PUBLIC_OBJECT_PARAMETERS = {
+    'CacheControl': 'max-age=86400',
+    'ACL': 'public-read',  # Allow public read for model files
+    'Metadata': {
+        'uploaded-by': 'fingerprint-app',
+        'content-type': 'model-file'
+    }
+}
+
 AWS_S3_USE_SSL = True
 AWS_S3_VERIFY = True
 AWS_QUERYSTRING_AUTH = True  # Use signed URLs for secure access
