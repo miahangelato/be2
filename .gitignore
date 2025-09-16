@@ -30,3 +30,6 @@ docs/
 notebooks/
 .env.secure
 .env
+
+# Exclude migrations folder
+migrations/
