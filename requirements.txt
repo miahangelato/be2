@@ -13,7 +13,7 @@ psycopg2-binary==2.9.7
 dj-database-url==2.1.0
 
 # ML and AI core
-# tensorflow==2.20.0
+tensorflow==2.20.0
 keras==3.11.2
 scikit-learn==1.4.2
 numpy>=1.23.5,<2.0
