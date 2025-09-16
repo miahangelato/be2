@@ -14,7 +14,7 @@ dj-database-url==2.1.0
 
 # ML and AI core
 # tensorflow==2.20.0
-tensorflow-cpu==2.20.0
+tflite-runtime
 keras==3.11.2
 scikit-learn==1.4.2
 numpy>=1.23.5,<2.0
