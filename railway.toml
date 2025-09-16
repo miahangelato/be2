@@ -1,9 +1,9 @@
 [build]
 builder = "nixpacks"
-buildCommand = "pip install --upgrade pip && pip install --no-cache-dir -r requirements.txt && python download_models_improved.py"
+buildCommand = "pip install --upgrade pip && pip install --no-cache-dir -r requirements.txt && python download_models_improved.py || true"
 
 [deploy]
-startCommand = "python startup.py"
+startCommand = "python download_models_improved.py || true && python startup.py"
 restartPolicyType = "ON_FAILURE"
 restartPolicyMaxRetries = 5
 
