@@ -1,5 +1,5 @@
 from ninja import NinjaAPI, File, Query, Form, UploadedFile, Schema
-from .scanner import FingerprintScanner, dpfpdd, DPFPDD_SUCCESS
+# from .scanner import FingerprintScanner, dpfpdd, DPFPDD_SUCCESS
 from .fingerprint_classifier_utils import classify_fingerprint_pattern
 from .bloodgroup_classifier import classify_blood_group_from_multiple
 from .models import Participant, Fingerprint, Result
@@ -356,47 +356,47 @@ def submit(
             "fingerprints": fingerprints,
         }
 
-@api.post("/scan-finger/")
-def scan_finger(request, finger_name: str = Query(...)):
-    scanner = None
-    try:
-        status = dpfpdd.dpfpdd_init()
-        if status != DPFPDD_SUCCESS:
-            return {
-                "success": False,
-                "error": "Failed to initialize fingerprint scanner. Please try again.",
-                "debug_info": f"Status = 0x{status:x}"
-            }
-        scanner = FingerprintScanner()
-        image_data = scanner.capture_fingerprint()
-        if not image_data:
-            return {
-                "success": False,
-                "error": "Failed to capture fingerprint. Please ensure your finger is properly placed on the scanner.",
-                "debug_info": "No image data returned"
-            }
-        base64_image = base64.b64encode(image_data).decode('utf-8')
-        return {
-            "success": True,
-            "image": base64_image,
-            "finger": finger_name
-        }
-    except Exception as e:
-        return {
-            "success": False,
-            "error": "An error occurred while scanning. Please try again.",
-            "debug_info": str(e)
-        }
-    finally:
-        if scanner:
-            try:
-                scanner.close()
-            except Exception:
-                pass
-        try:
-            dpfpdd.dpfpdd_exit()
-        except Exception:
-            pass
+# @api.post("/scan-finger/")
+# def scan_finger(request, finger_name: str = Query(...)):
+#     scanner = None
+#     try:
+#         status = dpfpdd.dpfpdd_init()
+#         if status != DPFPDD_SUCCESS:
+#             return {
+#                 "success": False,
+#                 "error": "Failed to initialize fingerprint scanner. Please try again.",
+#                 "debug_info": f"Status = 0x{status:x}"
+#             }
+#         scanner = FingerprintScanner()
+#         image_data = scanner.capture_fingerprint()
+#         if not image_data:
+#             return {
+#                 "success": False,
+#                 "error": "Failed to capture fingerprint. Please ensure your finger is properly placed on the scanner.",
+#                 "debug_info": "No image data returned"
+#             }
+#         base64_image = base64.b64encode(image_data).decode('utf-8')
+#         return {
+#             "success": True,
+#             "image": base64_image,
+#             "finger": finger_name
+#         }
+#     except Exception as e:
+#         return {
+#             "success": False,
+#             "error": "An error occurred while scanning. Please try again.",
+#             "debug_info": str(e)
+#         }
+#     finally:
+#         if scanner:
+#             try:
+#                 scanner.close()
+#             except Exception:
+#                 pass
+#         try:
+#             dpfpdd.dpfpdd_exit()
+#         except Exception:
+#             pass
 
 
 @api.post("/predict-diabetes/")
