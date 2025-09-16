@@ -4,27 +4,11 @@ import pandas as pd
 import numpy as np
 import pickle
 import os
-import requests
-import tempfile
-import logging
 from django.conf import settings
 from .models import Participant, Fingerprint
 
-logger = logging.getLogger(__name__)
-
 class DiabetesPredictor:
     def __init__(self):
-        # AWS S3 URLs for diabetes models (matching the blood group classifier pattern)
-        self.s3_urls = {
-            'A': "https://team3thesis.s3.us-east-1.amazonaws.com/models/backend/core%5Cdiabetes_risk_model.pkl",
-            'B': "https://team3thesis.s3.us-east-1.amazonaws.com/models/backend/core%5Cdiabetes_risk_model_B.pkl",
-        }
-        self.s3_cols_urls = {
-            'A': "https://team3thesis.s3.us-east-1.amazonaws.com/models/backend/core%5Cdiabetes_risk_model_columns.pkl",
-            'B': "https://team3thesis.s3.us-east-1.amazonaws.com/models/backend/core%5Cdiabetes_risk_model_columns_B.pkl",
-        }
-        
-        # Fallback to local paths if S3 fails
         base = settings.BASE_DIR
         self.model_paths = {
             'A': os.path.join(base, "core", "diabetes_risk_model.pkl"),
@@ -34,76 +18,32 @@ class DiabetesPredictor:
             'A': os.path.join(base, "core", "diabetes_risk_model_columns.pkl"),
             'B': os.path.join(base, "core", "diabetes_risk_model_columns_B.pkl"),
         }
-        
         self.models = {}
         self.model_columns = {}
         self.load_models()
 
-    def load_model_from_s3_url(self, url):
-        """Load pickle model directly from S3 URL"""
-        try:
-            logger.info(f"Downloading diabetes model from: {url}")
-            response = requests.get(url, stream=True, timeout=30)
-            response.raise_for_status()
-            
-            # Load pickle from response content
-            model = pickle.loads(response.content)
-            logger.info(f"Successfully loaded model from S3: {url}")
-            return model
-            
-        except requests.exceptions.RequestException as e:
-            logger.error(f"Failed to download model from S3 {url}: {e}")
-            return None
-        except pickle.PickleError as e:
-            logger.error(f"Failed to unpickle model from S3 {url}: {e}")
-            return None
-        except Exception as e:
-            logger.error(f"Unexpected error loading model from S3 {url}: {e}")
-            return None
-
     def load_models(self):
-        for key in self.s3_urls:
-            # Try to load model from S3 first
-            model = self.load_model_from_s3_url(self.s3_urls[key])
-            if model is not None:
-                self.models[key] = model
-                logger.info(f"Model {key} loaded from S3 successfully")
-            else:
-                # Fallback to local file
-                logger.warning(f"S3 load failed for model {key}, trying local file...")
-                model_path = self.model_paths[key]
-                try:
-                    if os.path.exists(model_path):
-                        with open(model_path, 'rb') as f:
-                            self.models[key] = pickle.load(f)
-                        logger.info(f"Model {key} loaded from local file")
-                    else:
-                        logger.error(f"Local model file not found: {model_path}")
-                        self.models[key] = None
-                except Exception as e:
-                    logger.error(f"Failed to load local model {key}: {e}")
+        for key in self.model_paths:
+            # Load model
+            model_path = self.model_paths[key]
+            try:
+                if os.path.exists(model_path):
+                    with open(model_path, 'rb') as f:
+                        self.models[key] = pickle.load(f)
+                else:
                     self.models[key] = None
-            
-            # Try to load model columns from S3 first
-            columns = self.load_model_from_s3_url(self.s3_cols_urls[key])
-            if columns is not None:
-                self.model_columns[key] = columns
-                logger.info(f"Model columns {key} loaded from S3 successfully")
-            else:
-                # Fallback to local file
-                logger.warning(f"S3 load failed for columns {key}, trying local file...")
-                cols_path = self.cols_paths[key]
-                try:
-                    if os.path.exists(cols_path):
-                        with open(cols_path, 'rb') as f:
-                            self.model_columns[key] = pickle.load(f)
-                        logger.info(f"Model columns {key} loaded from local file")
-                    else:
-                        logger.error(f"Local columns file not found: {cols_path}")
-                        self.model_columns[key] = None
-                except Exception as e:
-                    logger.error(f"Failed to load local columns {key}: {e}")
+            except Exception as e:
+                self.models[key] = None
+            # Load columns
+            cols_path = self.cols_paths[key]
+            try:
+                if os.path.exists(cols_path):
+                    with open(cols_path, 'rb') as f:
+                        self.model_columns[key] = pickle.load(f)
+                else:
                     self.model_columns[key] = None
+            except Exception as e:
+                self.model_columns[key] = None
 
     def prepare_input_df(self, participant_data, model_key):
         feature_order = [

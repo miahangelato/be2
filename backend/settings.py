@@ -47,13 +47,7 @@ ALLOWED_HOSTS = [
     '.herokuapp.com',  # Allow all Heroku subdomains
     '.ngrok-free.app',  # For development testing
     '.ngrok.io',  # For development testing
-    '.railway.app',  # Allow all Railway subdomains
-    '.railway.internal',  # Railway internal networking
 ]
-
-# Add Railway deployment URL if available
-if os.getenv('RAILWAY_PUBLIC_DOMAIN'):
-    ALLOWED_HOSTS.append(os.getenv('RAILWAY_PUBLIC_DOMAIN'))
 
 # Add your specific Heroku app domain when you create it
 # ALLOWED_HOSTS.append('your-app-name.herokuapp.com')
@@ -79,7 +73,6 @@ INSTALLED_APPS = [
 MIDDLEWARE = [
     'corsheaders.middleware.CorsMiddleware',
     'django.middleware.security.SecurityMiddleware',
-    'whitenoise.middleware.WhiteNoiseMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
@@ -173,42 +166,15 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 CORS_ALLOW_CREDENTIALS = True
 
-# CORS Settings for Production and Development
-if DEBUG:
-    # Development: Allow all origins
-    CORS_ALLOW_ALL_ORIGINS = True
-else:
-    # Production: Allow specific origins
-    CORS_ALLOWED_ORIGINS = [
-        "http://localhost:3000",  # Local development
-        "http://127.0.0.1:3000",  # Local development
-        "https://fe-zeta-bay.vercel.app/", 
-        "https://fe-hd7w.vercel.app/",
-        "https://ugsome-saltless-robbyn.ngrok-free.app",  # Current ngrok URL
-    ]
-    CORS_ALLOW_ALL_ORIGINS = False
-
-# Additional CORS headers needed for your app
-CORS_ALLOW_HEADERS = [
-    'accept',
-    'accept-encoding',
-    'authorization',
-    'content-type',
-    'dnt',
-    'origin',
-    'user-agent',
-    'x-csrftoken',
-    'x-requested-with',
-]
-
 
 AWS_LOCATION = 'static'
 AWS_MEDIA_LOCATION = 'media'
 
 STATIC_URL = 'static/'
-# Remove non-existent static directory for Railway deployment
-STATICFILES_DIRS = []
-STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')
+STATICFILES_DIRS = [
+    BASE_DIR / "static_my_project",
+]
+STATIC_ROOT = os.path.join(BASE_DIR, 'static', 'static_root')
 
 MEDIA_URL = 'media/'
 MEDIA_ROOT = os.path.join(BASE_DIR, 'media', 'media_root')
@@ -259,7 +225,12 @@ STORAGES = {
         },
     },
     "staticfiles": {
-        "BACKEND": "django.contrib.staticfiles.storage.StaticFilesStorage",
+        "BACKEND": "storages.backends.s3boto3.S3StaticStorage",
+        "OPTIONS": {
+            "location": AWS_LOCATION,
+            "default_acl": 'public-read',  # Static files can be public
+            "querystring_auth": False,  # Static files don't need signing
+        },
     },
 }
 
@@ -297,3 +268,5 @@ FILE_UPLOAD_MAX_MEMORY_SIZE = 10 * 1024 * 1024  # 10MB
 DATA_UPLOAD_MAX_MEMORY_SIZE = 10 * 1024 * 1024  # 10MB
 FILE_UPLOAD_PERMISSIONS = 0o644
 DATA_UPLOAD_MAX_NUMBER_FIELDS = 100
+
+CORS_ALLOW_ALL_ORIGINS = DEBUG  # Only allow all origins in development

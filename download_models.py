@@ -4,46 +4,34 @@ Pre-deployment script to download and cache models
 Run this during deployment to avoid slow first startup
 """
 import os
-import sys
+import django
+from django.conf import settings
 
-# Add the current directory to the Python path
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-
-# Set Django settings module
+# Setup Django
 os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'backend.settings')
+django.setup()
 
 def download_models():
     """Download all models during deployment"""
     print("=== Pre-downloading models for production deployment ===")
     
     try:
-        # Setup Django
-        import django
-        django.setup()
-        
         # Download fingerprint model
         print("1. Loading fingerprint classifier...")
-        try:
-            from core.fingerprint_classifier_utils import model
-            print("✅ Fingerprint model loaded and cached")
-        except Exception as e:
-            print(f"⚠️  Fingerprint model failed: {e}")
+        from core.fingerprint_classifier_utils import model
+        print("✅ Fingerprint model loaded and cached")
         
         # Download blood group model
         print("2. Loading blood group classifier...")
-        try:
-            from core.bloodgroup_classifier import BloodGroupClassifier
-            classifier = BloodGroupClassifier()
-            print("✅ Blood group model loaded and cached")
-        except Exception as e:
-            print(f"⚠️  Blood group model failed: {e}")
+        from core.bloodgroup_classifier import BloodGroupClassifier
+        classifier = BloodGroupClassifier()
+        print("✅ Blood group model loaded and cached")
         
-        print("🎉 Model download process completed!")
+        print("🎉 All models downloaded and ready for production!")
         
     except Exception as e:
-        print(f"❌ Error during model download: {e}")
-        # Don't fail deployment if models can't be downloaded
-        print("Continuing with deployment - models will be downloaded on first use")
+        print(f"❌ Error downloading models: {e}")
+        raise
 
 if __name__ == "__main__":
     download_models()

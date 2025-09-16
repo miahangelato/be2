@@ -1,18 +1,11 @@
 [build]
 builder = "nixpacks"
-buildCommand = "python -m pip install --upgrade pip && pip install --no-cache-dir -r requirements.txt && python manage.py collectstatic --noinput"
+buildCommand = "python -m pip install --upgrade pip && pip install -r requirements.txt"
 
 [deploy]
-startCommand = "gunicorn backend.wsgi:application --bind 0.0.0.0:8080 --workers 3 --access-logfile - --error-logfile -"
-restartPolicyType = "on_failure"
-restartPolicyMaxRetries = 3
+startCommand = "python manage.py migrate && gunicorn backend.wsgi"
+healthcheckPath = "/admin/login/"
+healthcheckTimeout = 100
 
-[environments.production]
-variables = { 
-    DEBUG = "False", 
-    RAILWAY_DEPLOYMENT = "True",
-    PYTHONUNBUFFERED = "1",
-    DJANGO_SETTINGS_MODULE = "backend.settings",
-    AWS_S3_REGION_NAME = "us-east-1",
-    DISABLE_SSL_REDIRECT = "True"
-}
+[environments]
+production.packageOverrides = ["python311", "libgl1-mesa-glx", "libglib2.0-0"]
