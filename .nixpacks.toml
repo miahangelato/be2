@@ -12,4 +12,4 @@ PIP_DISABLE_PIP_VERSION_CHECK = '1'
 PYTHONUNBUFFERED = '1'
 
 [start]
-cmd = 'python startup_minimal.py'
+cmd = 'python startup_django_only.py'

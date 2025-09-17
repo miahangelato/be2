@@ -9,14 +9,10 @@ dj-database-url==2.1.0
 
 # Essential packages
 requests==2.32.5
-pillow==11.3.0
 python-dotenv==1.1.1
-cryptography==45.0.6
-pycryptodome==3.23.0
 
 # AWS and storage
 boto3==1.35.36
-botocore==1.35.36
 django-storages==1.14.2
 
 # Basic packages
@@ -28,12 +24,5 @@ asgiref==3.9.1
 sqlparse==0.5.3
 tzdata==2025.2
 
-# Basic ML packages - minimal set that works on Railway
+# Minimal ML (only what we absolutely need)
 numpy==1.26.4
-scikit-learn==1.4.2
-
-# TensorFlow CPU-only (compatible version)
-tensorflow-cpu==2.15.0
-
-# OpenCV headless
-opencv-python-headless==4.8.1.78

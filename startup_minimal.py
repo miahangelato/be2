@@ -34,31 +34,9 @@ def main():
         django.setup()
         logger.info("✅ Django setup complete")
         
-        # Preload ML models from S3 (cache them locally)
-        logger.info("🤖 Preloading ML models from S3...")
-        try:
-            from core.fingerprint_classifier_utils import get_model
-            from core.bloodgroup_classifier import BloodGroupClassifier
-            
-            # This will download and cache the fingerprint model
-            fingerprint_model = get_model()
-            logger.info("✅ Fingerprint classification model loaded")
-            
-            # This will download and cache the blood group model  
-            blood_classifier = BloodGroupClassifier()
-            logger.info("✅ Blood group classification model loaded")
-            
-            # Try to load diabetes model (requires pandas)
-            try:
-                from core.diabetes_predictor import DiabetesPredictor
-                diabetes_predictor = DiabetesPredictor()
-                logger.info("✅ Diabetes prediction model loaded")
-            except ImportError as e:
-                logger.warning(f"⚠️ Diabetes model skipped (missing pandas): {e}")
-            
-        except Exception as e:
-            logger.warning(f"⚠️ Model preloading warning: {e}")
-            logger.info("📝 Models will be downloaded on first request instead")
+        # Skip model preloading for now - focus on getting basic app running
+        logger.info("🤖 Skipping model preloading - models will download on first request")
+        logger.info("📝 This reduces startup time and memory usage during deployment")
         
         # Run migrations
         logger.info("📋 Running database migrations...")
