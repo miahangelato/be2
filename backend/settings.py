@@ -112,8 +112,11 @@ import os
 db_url = os.environ.get('DATABASE_URL')
 
 if db_url:
+    print(f"Found DATABASE_URL: {db_url[:30]}...")  # Debug output (truncated)
+    
     # PostgreSQL configuration from DATABASE_URL
     is_railway = bool(os.environ.get('RAILWAY_ENVIRONMENT'))
+    print(f"Railway environment: {is_railway}")
     
     # Railway handles SSL internally, so we don't need to force it
     ssl_required = False if is_railway else True
@@ -127,12 +130,15 @@ if db_url:
         )
     }
     
+    print(f"Database config after parsing: {DATABASES['default']}")
+    
     # Add PostgreSQL-specific options after parsing the URL
     if DATABASES['default']['ENGINE'] == 'django.db.backends.postgresql':
         DATABASES['default']['OPTIONS'] = {
             'options': '-c timezone=UTC'
         }
 else:
+    print("No DATABASE_URL found, using fallback configuration")
     # Fallback to manual PostgreSQL configuration if DATABASE_URL is not present
     DATABASES = {
         'default': {
