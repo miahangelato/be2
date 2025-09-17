@@ -44,6 +44,7 @@ DEBUG = os.getenv('DEBUG', 'False').lower() == 'true'
 ALLOWED_HOSTS = [
     'localhost',
     '127.0.0.1',
+    '.vercel.app',
     '.herokuapp.com',  # Allow all Heroku subdomains
     '.ngrok-free.app',  # For development testing
     '.ngrok.io',  # For development testing
@@ -240,6 +241,28 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 CORS_ALLOW_CREDENTIALS = True
 
+# Additional CORS settings for API requests
+CORS_ALLOWED_HEADERS = [
+    'accept',
+    'accept-encoding',
+    'authorization',
+    'content-type',
+    'dnt',
+    'origin',
+    'user-agent',
+    'x-csrftoken',
+    'x-requested-with',
+]
+
+CORS_ALLOW_METHODS = [
+    'DELETE',
+    'GET',
+    'OPTIONS',
+    'PATCH',
+    'POST',
+    'PUT',
+]
+
 
 AWS_LOCATION = 'static'
 AWS_MEDIA_LOCATION = 'media'
@@ -370,3 +393,14 @@ FILE_UPLOAD_PERMISSIONS = 0o644
 DATA_UPLOAD_MAX_NUMBER_FIELDS = 100
 
 CORS_ALLOW_ALL_ORIGINS = DEBUG  # Only allow all origins in development
+
+# Production CORS settings - allow specific frontend domains
+CORS_ALLOWED_ORIGINS = [
+    "https://fe-hd7w.vercel.app",  # Your Vercel frontend
+    "http://localhost:3000",      # Local development
+    "http://127.0.0.1:3000",      # Local development
+]
+
+# Allow CORS for all origins in development, specific origins in production
+if not DEBUG:
+    CORS_ALLOW_ALL_ORIGINS = False

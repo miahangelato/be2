@@ -34,82 +34,61 @@ def main():
         django.setup()
         logger.info("✅ Django setup complete")
         
-        # Optional model preloading with better error handling
-        logger.info("🤖 Attempting to preload ML models from S3...")
-        try:
-            # Check if model preloading should be skipped
-            skip_preloading = os.environ.get('SKIP_MODEL_PRELOADING', 'False').lower() == 'true'
-            
-            if skip_preloading:
-                logger.info("📝 Model preloading skipped (SKIP_MODEL_PRELOADING=True)")
-            else:
-                # Try to preload each model individually with error handling
-                models_loaded = 0
-                
-                try:
-                    from core.fingerprint_classifier_utils import get_model
-                    fingerprint_model = get_model()
-                    logger.info("✅ Fingerprint classification model loaded")
-                    models_loaded += 1
-                except Exception as e:
-                    logger.warning(f"⚠️ Fingerprint model loading failed: {e}")
-                
-                try:
-                    from core.bloodgroup_classifier import get_blood_group_classifier
-                    blood_classifier = get_blood_group_classifier()
-                    blood_classifier.ensure_model_loaded()  # Force load
-                    logger.info("✅ Blood group classification model loaded")
-                    models_loaded += 1
-                except Exception as e:
-                    logger.warning(f"⚠️ Blood group model loading failed: {e}")
-                
-                if models_loaded > 0:
-                    logger.info(f"✅ {models_loaded}/2 ML models loaded successfully")
-                else:
-                    logger.warning("⚠️ No ML models loaded - they will be downloaded on first request")
-            
-        except Exception as e:
-            logger.warning(f"⚠️ Model preloading warning: {e}")
-            logger.info("📝 Models will be downloaded on first request instead")
+        # Skip model preloading for Railway deployment
+        logger.info("📝 Skipping ML model preloading for faster startup")
+        logger.info("🤖 Models will be downloaded on first request")
         
-        # Run migrations
+        # Run migrations with timeout protection
         logger.info("📋 Running database migrations...")
         try:
-            call_command('migrate', verbosity=1)
+            # Set a timeout for migrations
+            import signal
+            
+            def timeout_handler(signum, frame):
+                raise TimeoutError("Migration timeout")
+            
+            # Windows doesn't support SIGALRM, so just run without timeout on Windows
+            if os.name != 'nt':
+                signal.signal(signal.SIGALRM, timeout_handler)
+                signal.alarm(30)  # 30 second timeout
+            
+            call_command('migrate', verbosity=0, run_syncdb=True)
+            
+            if os.name != 'nt':
+                signal.alarm(0)  # Cancel timeout
+                
             logger.info("✅ Migrations complete")
+        except TimeoutError:
+            logger.error("❌ Migration timeout - continuing anyway")
         except Exception as e:
-            logger.error(f"❌ Migration error: {e}")
+            logger.warning(f"⚠️ Migration warning: {e}")
             # Continue anyway for Railway
         
-        # Collect static files (if using S3, this may not be needed)
-        logger.info("📁 Collecting static files...")
-        try:
-            call_command('collectstatic', '--noinput', verbosity=1)
-            logger.info("✅ Static files collected")
-        except Exception as e:
-            logger.warning(f"⚠️ Static files warning: {e}")
-            # Continue anyway
+        # Skip collectstatic for Railway (using S3)
+        logger.info("📁 Skipping static files collection (using S3)")
         
         # Start Gunicorn server
         port = os.getenv('PORT', '8000')
         logger.info(f"🌐 Starting Gunicorn on port {port}")
         
-        # Execute Gunicorn with optimized settings for Railway
-        os.execvp('gunicorn', [
+        # Execute Gunicorn with Railway-optimized settings
+        gunicorn_args = [
             'gunicorn',
             'backend.wsgi:application',
             '--bind', f'0.0.0.0:{port}',
-            '--workers', '2',  # Railway has limited memory
+            '--workers', '1',  # Single worker for free tier
             '--worker-class', 'sync',
-            '--timeout', '120',
-            '--keep-alive', '5',
-            '--max-requests', '1000',
-            '--max-requests-jitter', '100',
+            '--timeout', '60',  # Shorter timeout
+            '--keep-alive', '2',
+            '--max-requests', '500',  # Lower for stability
+            '--max-requests-jitter', '50',
             '--log-level', 'info',
             '--access-logfile', '-',
-            '--error-logfile', '-',
-            '--capture-output'
-        ])
+            '--error-logfile', '-'
+        ]
+        
+        logger.info(f"🚀 Executing: {' '.join(gunicorn_args)}")
+        os.execvp('gunicorn', gunicorn_args)
         
     except Exception as e:
         logger.error(f"❌ Startup failed: {e}")
