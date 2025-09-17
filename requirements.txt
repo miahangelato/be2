@@ -28,14 +28,12 @@ asgiref==3.9.1
 sqlparse==0.5.3
 tzdata==2025.2
 
-# Basic ML packages - using binary wheels
+# Basic ML packages - minimal set that works on Railway
 numpy==1.26.4
-pandas==2.0.3
 scikit-learn==1.4.2
 
-# TensorFlow CPU-only
-tensorflow-cpu==2.17.0
-keras==2.17.0
+# TensorFlow CPU-only (compatible version)
+tensorflow-cpu==2.15.0
 
 # OpenCV headless
 opencv-python-headless==4.8.1.78
