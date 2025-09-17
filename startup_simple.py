@@ -55,15 +55,27 @@ def main():
         execute_from_command_line(['manage.py', 'migrate', '--noinput'])
         print("✅ Database migrations completed")
     except Exception as e:
-        print(f"⚠️ Migration warning: {e}")
+        print(f"❌ Migration failed: {e}")
+        # Continue anyway, might be a non-critical error
     
-    # Test database connection
+    # Test database connection with more details
     try:
         from django.db import connection
         connection.ensure_connection()
-        print("✅ Database connection successful")
+        
+        with connection.cursor() as cursor:
+            cursor.execute("SELECT version();")
+            version = cursor.fetchone()[0]
+            print(f"✅ Database connection successful: {version.split(',')[0]}")
+            
+            # Test if we can query Django tables
+            cursor.execute("SELECT COUNT(*) FROM django_migrations;")
+            migration_count = cursor.fetchone()[0]
+            print(f"✅ Found {migration_count} database migrations")
+            
     except Exception as db_error:
-        print(f"⚠️ WARNING: Database connection test failed: {db_error}")
+        print(f"❌ Database connection failed: {db_error}")
+        print("⚠️ Continuing startup anyway...")
     
     # Create static directories if they don't exist
     try:

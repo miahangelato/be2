@@ -19,6 +19,11 @@ logger = logging.getLogger(__name__)
 
 api = NinjaAPI()
 
+@api.get("/ping/")
+def ping(request):
+    """Simple ping endpoint for basic health check"""
+    return {"status": "ok", "message": "Django app is running"}
+
 @api.get("/health/")
 def health_check(request):
     """
