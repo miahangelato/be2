@@ -1,0 +1,15 @@
+[phases.install]
+nixPkgs = ['python3', 'gcc', 'pkg-config']
+aptPkgs = ['libpq-dev']
+
+[phases.build]
+cmds = ['pip install -r requirements_minimal.txt']
+
+[variables]
+PIP_CACHE_DIR = '/tmp/pip-cache'
+PIP_NO_CACHE_DIR = 'false'
+PIP_DISABLE_PIP_VERSION_CHECK = '1'
+PYTHONUNBUFFERED = '1'
+
+[start]
+cmd = 'python startup_minimal.py'

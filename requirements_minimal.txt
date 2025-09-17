@@ -1,4 +1,4 @@
-# MINIMAL Django dependencies only
+# Core Django dependencies
 Django==5.2.5
 django-cors-headers==4.7.0
 django-ninja==1.4.3
@@ -9,13 +9,21 @@ dj-database-url==2.1.0
 
 # Essential packages
 requests==2.32.5
+pillow==11.3.0
 python-dotenv==1.1.1
+cryptography==45.0.6
+pycryptodome==3.23.0
 
-# AWS (lightweight)
+# AWS and storage
 boto3==1.35.36
+botocore==1.35.36
 django-storages==1.14.2
 
-# Django essentials
+# Basic packages
+urllib3==2.5.0
+certifi==2025.8.3
+python-dateutil==2.9.0.post0
+pytz==2025.2
 asgiref==3.9.1
 sqlparse==0.5.3
 tzdata==2025.2

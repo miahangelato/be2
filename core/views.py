@@ -1,8 +1,6 @@
 from ninja import NinjaAPI, File, Query, Form, UploadedFile, Schema
-from .fingerprint_classifier_utils import classify_fingerprint_pattern
-from .bloodgroup_classifier import classify_blood_group_from_multiple
 from .models import Participant, Fingerprint, Result
-from .diabetes_predictor import DiabetesPredictor
+from .ml_availability import ml_available, get_ml_status
 import base64
 import os
 from typing import Dict, Any
@@ -12,6 +10,25 @@ from django.http import JsonResponse
 from django.conf import settings
 from .encryption_utils import encryption_service
 from .backend_decryption import backend_decryption
+
+# Import ML modules conditionally
+try:
+    from .fingerprint_classifier_utils import classify_fingerprint_pattern
+    ML_FINGERPRINT_AVAILABLE = True
+except ImportError:
+    ML_FINGERPRINT_AVAILABLE = False
+
+try:
+    from .bloodgroup_classifier import classify_blood_group_from_multiple
+    ML_BLOODGROUP_AVAILABLE = True
+except ImportError:
+    ML_BLOODGROUP_AVAILABLE = False
+
+try:
+    from .diabetes_predictor import DiabetesPredictor
+    ML_DIABETES_AVAILABLE = True
+except ImportError:
+    ML_DIABETES_AVAILABLE = False
 
 api = NinjaAPI()
 
@@ -23,41 +40,43 @@ def ping(request):
 @api.get("/health/")
 def health_check(request):
     """
-    Health check endpoint that ensures models are loaded
-    Use this to warm up the application after deployment
+    Health check endpoint that checks system status
+    Use this to check deployment status and ML availability
     """
     try:
-        # Check if models are cached locally
-        fingerprint_cache = os.path.join(settings.BASE_DIR, "core", "improved_pattern_cnn_model.h5")
-        bloodgroup_cache = os.path.join(settings.BASE_DIR, "core", "bloodgroup_model_20250823-140933.h5")
+        # Get ML package status
+        ml_status = get_ml_status()
         
-        models_status = {
-            "fingerprint_model_cached": os.path.exists(fingerprint_cache),
-            "bloodgroup_model_cached": os.path.exists(bloodgroup_cache),
-        }
-        
-        # Try to load models to ensure they work (this will download if not cached)
-        if not models_status["fingerprint_model_cached"]:
-            from .fingerprint_classifier_utils import model  # This will download and cache
-            models_status["fingerprint_model_cached"] = True
-            
-        if not models_status["bloodgroup_model_cached"]:
-            from .bloodgroup_classifier import BloodGroupClassifier
-            classifier = BloodGroupClassifier()  # This will download and cache
-            models_status["bloodgroup_model_cached"] = True
-        
-        return {
-            "status": "healthy",
-            "models": models_status,
-            "message": "All models loaded and ready"
-        }
-        
+        # Check database connectivity
+        from django.db import connection
+        with connection.cursor() as cursor:
+            cursor.execute("SELECT 1")
+            db_status = "connected"
     except Exception as e:
-        return JsonResponse({
-            "status": "unhealthy",
-            "error": str(e),
-            "message": "Models not ready"
-        }, status=503)
+        db_status = f"error: {str(e)}"
+    
+    # Check S3 connectivity
+    try:
+        import boto3
+        from django.conf import settings
+        s3_client = boto3.client('s3')
+        s3_client.head_bucket(Bucket=settings.AWS_STORAGE_BUCKET_NAME)
+        s3_status = "connected"
+    except Exception as e:
+        s3_status = f"error: {str(e)}"
+    
+    return {
+        "status": "healthy" if ml_status['all_available'] else "partial",
+        "database": db_status,
+        "s3_storage": s3_status,
+        "ml_packages": ml_status,
+        "features": {
+            "fingerprint_analysis": ML_FINGERPRINT_AVAILABLE,
+            "bloodgroup_analysis": ML_BLOODGROUP_AVAILABLE,
+            "diabetes_prediction": ML_DIABETES_AVAILABLE,
+        },
+        "message": "All systems operational" if ml_status['all_available'] else "ML features disabled - minimal deployment mode"
+    }
 
 @api.post("/identify-blood-group-from-participant/")
 def identify_blood_group_from_participant(request, participant_id: int = Query(...)):
@@ -80,7 +99,14 @@ def identify_blood_group_from_participant(request, participant_id: int = Query(.
     for fp in fingerprints:
         if fp.image and os.path.exists(fp.image.path):
             try:
-                pred = classify_blood_group_from_multiple([fp.image.path])
+                if not ML_BLOODGROUP_AVAILABLE:
+                    pred = {
+                        'predicted_blood_group': 'ML_UNAVAILABLE',
+                        'confidence': 0.0,
+                        'all_probabilities': {}
+                    }
+                else:
+                    pred = classify_blood_group_from_multiple([fp.image.path])
                 predicted_blood_group = pred['predicted_blood_group']
                 results.append({
                     "finger": fp.finger,
@@ -262,7 +288,10 @@ def submit(
     fingerprints = []
     for finger_name, img_file in finger_files.items():
         if img_file and hasattr(img_file, 'file'):
-            pattern = classify_fingerprint_pattern(img_file.file)
+            if not ML_FINGERPRINT_AVAILABLE:
+                pattern = "ML_UNAVAILABLE"  # Placeholder when ML packages not installed
+            else:
+                pattern = classify_fingerprint_pattern(img_file.file)
             fingerprints.append({
                 "finger": finger_name,
                 "pattern": pattern,
@@ -372,6 +401,13 @@ def submit(
 def predict_diabetes(request, participant_id: int = Form(...), consent: bool = Form(True)):
     """Predict diabetes risk for a participant using their data and fingerprints. If consent is True, save result."""
     try:
+        # Check if ML packages are available
+        if not ML_DIABETES_AVAILABLE:
+            return JsonResponse({
+                "error": "Diabetes prediction not available - ML packages not installed",
+                "message": "This feature is disabled in minimal deployment mode"
+            }, status=503)
+            
         # Get participant
         participant = Participant.objects.get(id=participant_id)
         # Initialize predictor

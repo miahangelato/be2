@@ -118,24 +118,43 @@ if db_url:
     is_railway = bool(os.environ.get('RAILWAY_ENVIRONMENT'))
     print(f"Railway environment: {is_railway}")
     
-    # Railway handles SSL internally, so we don't need to force it
-    ssl_required = False if is_railway else True
-    
-    # Configure database from URL - use the standard parameters
-    DATABASES = {
-        'default': dj_database_url.config(
-            default=db_url,
-            conn_max_age=600, 
-            ssl_require=ssl_required
-        )
-    }
-    
-    print(f"Database config after parsing: {DATABASES['default']}")
-    
-    # Add PostgreSQL-specific options after parsing the URL
-    if DATABASES['default']['ENGINE'] == 'django.db.backends.postgresql':
-        DATABASES['default']['OPTIONS'] = {
-            'options': '-c timezone=UTC'
+    # Manual URL parsing for Railway compatibility
+    try:
+        from urllib.parse import urlparse
+        parsed = urlparse(db_url)
+        
+        DATABASES = {
+            'default': {
+                'ENGINE': 'django.db.backends.postgresql',
+                'NAME': parsed.path[1:] if parsed.path.startswith('/') else parsed.path,  # Remove leading slash
+                'USER': parsed.username,
+                'PASSWORD': parsed.password,
+                'HOST': parsed.hostname,
+                'PORT': str(parsed.port) if parsed.port else '5432',
+                'CONN_MAX_AGE': 600,
+                'CONN_HEALTH_CHECKS': True,
+                'OPTIONS': {
+                    'options': '-c timezone=UTC'
+                }
+            }
+        }
+        
+        print(f"Database config after manual parsing:")
+        print(f"  HOST: {DATABASES['default']['HOST']}")
+        print(f"  NAME: {DATABASES['default']['NAME']}")
+        print(f"  USER: {DATABASES['default']['USER']}")
+        print(f"  PORT: {DATABASES['default']['PORT']}")
+        
+    except Exception as e:
+        print(f"Error parsing DATABASE_URL manually: {e}")
+        # Fallback to dj_database_url if manual parsing fails
+        DATABASES = {
+            'default': dj_database_url.config(
+                default=db_url,
+                conn_max_age=600,
+                conn_health_checks=True,
+                ssl_require=False
+            )
         }
 else:
     print("No DATABASE_URL found, using fallback configuration")
