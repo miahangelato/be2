@@ -121,12 +121,24 @@ if db_url:
     # Manual URL parsing for Railway compatibility
     try:
         from urllib.parse import urlparse
+        
+        print(f"Parsing DATABASE_URL: {db_url}")  # Full URL for debugging
         parsed = urlparse(db_url)
+        
+        print(f"Parsed components:")
+        print(f"  scheme: {parsed.scheme}")
+        print(f"  hostname: {parsed.hostname}")
+        print(f"  port: {parsed.port}")
+        print(f"  username: {parsed.username}")
+        print(f"  path: {parsed.path}")
+        
+        # Extract database name from path
+        db_name = parsed.path[1:] if parsed.path.startswith('/') else parsed.path
         
         DATABASES = {
             'default': {
                 'ENGINE': 'django.db.backends.postgresql',
-                'NAME': parsed.path[1:] if parsed.path.startswith('/') else parsed.path,  # Remove leading slash
+                'NAME': db_name,
                 'USER': parsed.username,
                 'PASSWORD': parsed.password,
                 'HOST': parsed.hostname,
@@ -139,7 +151,7 @@ if db_url:
             }
         }
         
-        print(f"Database config after manual parsing:")
+        print(f"Final database config:")
         print(f"  HOST: {DATABASES['default']['HOST']}")
         print(f"  NAME: {DATABASES['default']['NAME']}")
         print(f"  USER: {DATABASES['default']['USER']}")
@@ -147,6 +159,8 @@ if db_url:
         
     except Exception as e:
         print(f"Error parsing DATABASE_URL manually: {e}")
+        import traceback
+        traceback.print_exc()
         # Fallback to dj_database_url if manual parsing fails
         DATABASES = {
             'default': dj_database_url.config(
