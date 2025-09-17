@@ -207,7 +207,7 @@ STATICFILES_DIRS = [
 ]
 STATIC_ROOT = os.path.join(BASE_DIR, 'static', 'static_root')
 
-MEDIA_URL = 'media/'
+MEDIA_URL = '/media/'
 MEDIA_ROOT = os.path.join(BASE_DIR, 'media', 'media_root')
 
 # AWS S3 Security Configuration - SECURE FOR PRODUCTION
@@ -250,8 +250,30 @@ AWS_S3_SIGNATURE_VERSION = 's3v4'
 AWS_PRELOAD_METADATA = True
 AWS_S3_ADDRESSING_STYLE = 'virtual'
 
+# Configure media files based on environment
+if DEBUG:
+    # Local development - use local storage
+    MEDIA_URL = '/media/'
+    MEDIA_ROOT = os.path.join(BASE_DIR, 'media', 'media_root')
+else:
+    # Production - use S3
+    MEDIA_URL = f'https://{AWS_STORAGE_BUCKET_NAME}.s3.{AWS_S3_REGION_NAME}.amazonaws.com/{AWS_MEDIA_LOCATION}/'
+
 STORAGES = {
-    "default": {
+    "staticfiles": {
+        "BACKEND": "storages.backends.s3boto3.S3StaticStorage",
+        "OPTIONS": {
+            "location": AWS_LOCATION,
+            "default_acl": 'public-read',  # Static files can be public
+            "querystring_auth": False,  # Static files don't need signing
+        },
+    },
+}
+
+# Configure media storage based on environment
+if not DEBUG:
+    # Production - use S3 for media files
+    STORAGES["default"] = {
         "BACKEND": "storages.backends.s3boto3.S3Boto3Storage",
         "OPTIONS": {
             "location": AWS_MEDIA_LOCATION,
@@ -262,16 +284,12 @@ STORAGES = {
             "signature_version": AWS_S3_SIGNATURE_VERSION,
             "addressing_style": AWS_S3_ADDRESSING_STYLE,
         },
-    },
-    "staticfiles": {
-        "BACKEND": "storages.backends.s3boto3.S3StaticStorage",
-        "OPTIONS": {
-            "location": AWS_LOCATION,
-            "default_acl": 'public-read',  # Static files can be public
-            "querystring_auth": False,  # Static files don't need signing
-        },
-    },
-}
+    }
+else:
+    # Development - use default file storage
+    STORAGES["default"] = {
+        "BACKEND": "django.core.files.storage.FileSystemStorage",
+    }
 
 
 # Security Settings - Enhanced for Production

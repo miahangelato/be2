@@ -1,0 +1,114 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Virtual environments
+.env
+.venv/
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Logs
+*.log
+logs/
+*.log.*
+
+# Large ML models - these are downloaded from S3
+*.h5
+*.pkl
+*.model
+*.bin
+core/*.h5
+core/*.pkl
+models/
+*.safetensors
+
+# Media files - these are stored in S3
+media/
+uploads/
+static/static_root/
+staticfiles/
+
+# Database
+*.db
+*.sqlite3
+
+# Cache
+.cache/
+.pytest_cache/
+
+# Git
+.git/
+.gitignore
+
+# Test files
+test_*.py
+*_test.py
+tests/
+coverage/
+.coverage
+htmlcov/
+
+# Documentation
+docs/
+*.md
+README*
+
+# Analysis and cleanup scripts
+analyze_s3.py
+cleanup_s3.py
+cleanup_high_impact.py
+test_connections.py
+test_media_upload.py
+
+# Windows
+*.exe
+*.dll
+*.msi
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+*.temp
+
+# Railway specific
+.railway/

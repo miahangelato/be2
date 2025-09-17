@@ -17,7 +17,6 @@ def load_model_from_s3_url(url, cache_path=None):
     Load Keras model directly from S3 URL using requests with local caching
     """
     try:
-        print(f"Downloading model from: {url}")
         response = requests.get(url, stream=True)
         response.raise_for_status()
         
@@ -29,12 +28,8 @@ def load_model_from_s3_url(url, cache_path=None):
                 if chunk:
                     tmp.write(chunk)
                     downloaded += len(chunk)
-                    if total_size > 0 and downloaded % (1024 * 1024) == 0:  # Print every MB
-                        percent = (downloaded / total_size) * 100
-                        print(f"Download progress: {percent:.1f}%")
             
             tmp.flush()
-            print(f"Model downloaded successfully ({downloaded} bytes)")
             
             # Load the model from temporary file
             model = tf.keras.models.load_model(tmp.name)
@@ -45,9 +40,8 @@ def load_model_from_s3_url(url, cache_path=None):
                     os.makedirs(os.path.dirname(cache_path), exist_ok=True)
                     import shutil
                     shutil.copy2(tmp.name, cache_path)
-                    print(f"Model cached to: {cache_path}")
                 except Exception as e:
-                    print(f"Warning: Failed to cache model - {e}")
+                    pass
             
             # Clean up temporary file
             os.unlink(tmp.name)
@@ -63,12 +57,10 @@ def load_model_with_fallback(local_path, s3_url):
     """
     # First, try to load from local cache
     if os.path.exists(local_path):
-        print(f"Loading cached model from: {local_path}")
         return tf.keras.models.load_model(local_path)
     
     # If no local cache, download from S3 and cache it
     try:
-        print("No local cache found, downloading from S3...")
         return load_model_from_s3_url(s3_url, cache_path=local_path)
     except Exception as s3_error:
         error_msg = f"""
@@ -88,9 +80,7 @@ def get_model():
     """Lazy load the model only when needed"""
     global _model
     if _model is None:
-        print("Loading fingerprint classification model...")
         _model = load_model_with_fallback(MODEL_PATH, MODEL_S3_URL)
-        print("✅ Fingerprint model loaded successfully")
     return _model
 
 def classify_fingerprint_pattern(img_file):

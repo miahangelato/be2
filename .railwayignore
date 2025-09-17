@@ -6,10 +6,47 @@ __pycache__/
 venv/
 *.log
 .DS_Store
-core/*.h5
-media/
-static/static_root/
 
-# Ignore Windows-specific files
+# Large ML models - downloaded from S3 at runtime
+*.h5
+*.pkl
+*.model
+*.bin
+core/*.h5
+core/*.pkl
+models/
+*.safetensors
+
+# Media files - stored in S3
+media/
+uploads/
+static/static_root/
+staticfiles/
+
+# Test and analysis scripts
+test_*.py
+*_test.py
+analyze_s3.py
+cleanup_s3.py
+cleanup_high_impact.py
+test_connections.py
+test_media_upload.py
+
+# Windows-specific files
 *.exe
 *.dll
+
+# Documentation
+*.md
+README*
+docs/
+
+# Git
+.git/
+.gitignore
+
+# Cache and temporary
+.cache/
+tmp/
+temp/
+*.tmp

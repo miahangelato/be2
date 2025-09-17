@@ -1,5 +1,4 @@
 from ninja import NinjaAPI, File, Query, Form, UploadedFile, Schema
-# from .scanner import FingerprintScanner, dpfpdd, DPFPDD_SUCCESS
 from .fingerprint_classifier_utils import classify_fingerprint_pattern
 from .bloodgroup_classifier import classify_blood_group_from_multiple
 from .models import Participant, Fingerprint, Result
@@ -13,9 +12,6 @@ from django.http import JsonResponse
 from django.conf import settings
 from .encryption_utils import encryption_service
 from .backend_decryption import backend_decryption
-import logging
-
-logger = logging.getLogger(__name__)
 
 api = NinjaAPI()
 
@@ -42,12 +38,10 @@ def health_check(request):
         
         # Try to load models to ensure they work (this will download if not cached)
         if not models_status["fingerprint_model_cached"]:
-            logger.info("Fingerprint model not cached, triggering download...")
             from .fingerprint_classifier_utils import model  # This will download and cache
             models_status["fingerprint_model_cached"] = True
             
         if not models_status["bloodgroup_model_cached"]:
-            logger.info("Blood group model not cached, triggering download...")
             from .bloodgroup_classifier import BloodGroupClassifier
             classifier = BloodGroupClassifier()  # This will download and cache
             models_status["bloodgroup_model_cached"] = True
@@ -59,7 +53,6 @@ def health_check(request):
         }
         
     except Exception as e:
-        logger.error(f"Health check failed: {e}")
         return JsonResponse({
             "status": "unhealthy",
             "error": str(e),
@@ -72,35 +65,23 @@ def identify_blood_group_from_participant(request, participant_id: int = Query(.
     Identify blood group for each fingerprint image of a participant (by participant_id).
     Returns a list of predictions, one per fingerprint.
     """
-    print("[DEBUG] Incoming request data:")
-    print(f"Participant ID: {participant_id}")
-    print("[DEBUG] Request validation started")
-    
     # Check if participant exists
     try:
         participant = Participant.objects.get(id=participant_id)
-        print(f"[DEBUG] Found participant: {participant.id}")
     except Participant.DoesNotExist:
-        print("[ERROR] Participant does not exist.")
         return {"error": "Participant not found.", "participant_id": participant_id}
 
     # Fetch fingerprints
     fingerprints = participant.fingerprints.all()
     if not fingerprints:
-        print("[ERROR] No fingerprints found for participant.")
         return {"error": "No fingerprints found.", "participant_id": participant_id}
-
-    print(f"[DEBUG] Found {len(fingerprints)} fingerprints for participant.")
 
     results = []
     for fp in fingerprints:
-        print(f"[DEBUG] Processing fingerprint for finger: {fp.finger}")
         if fp.image and os.path.exists(fp.image.path):
             try:
-                print(f"[DEBUG] Classifying fingerprint: {fp.image.path}")
                 pred = classify_blood_group_from_multiple([fp.image.path])
                 predicted_blood_group = pred['predicted_blood_group']
-                print(f"[DEBUG] Classification result: {predicted_blood_group}")
                 results.append({
                     "finger": fp.finger,
                     "filename": os.path.basename(fp.image.path),
@@ -109,13 +90,10 @@ def identify_blood_group_from_participant(request, participant_id: int = Query(.
                     "all_probabilities": pred.get('all_probabilities'),
                 })
             except Exception as e:
-                print(f"[ERROR] Failed to classify fingerprint: {e}")
                 results.append({"finger": fp.finger, "error": str(e)})
         else:
-            print(f"[WARNING] Fingerprint image not found or invalid for finger {fp.finger}.")
             results.append({"finger": fp.finger, "error": "Image not found"})
 
-    print(f"[DEBUG] Final results: {results}")
     return {"participant_id": participant_id, "results": results, "predicted_blood_group": predicted_blood_group}
     
 @api.post("/identify-blood-group-from-json/")
@@ -207,7 +185,6 @@ def submit(
     right_ring: UploadedFile = File(...),
     right_pinky: UploadedFile = File(...),
 ):
-    print("[📨 BACKEND RECEIVED] Raw encrypted parameters:")
     received_data = {
         "consent": consent,
         "age": age,
@@ -226,20 +203,8 @@ def submit(
         "last_donation_date": last_donation_date,
     }
     
-    for key, value in received_data.items():
-        if isinstance(value, str) and len(value) > 50:
-            print(f"  {key}: {value[:30]}... (possibly encrypted)")
-        else:
-            print(f"  {key}: {value}")
-    
-    print(f"[🔓 BACKEND DECRYPTING] Decrypting sensitive data...")
-    
     # Decrypt the received form data
     decrypted_data = backend_decryption.decrypt_form_data(received_data)
-    
-    print(f"[✅ BACKEND DECRYPTED] Final decrypted parameters:")
-    for key, value in decrypted_data.items():
-        print(f"  {key}: {value}")
     
     # Helper function to safely convert values
     def safe_convert(value, target_type, fallback=None):
@@ -256,7 +221,6 @@ def submit(
             else:
                 return value
         except (ValueError, TypeError) as e:
-            print(f"[⚠️ CONVERSION WARNING] Failed to convert {value} to {target_type.__name__}: {e}")
             return fallback
     
     # Use decrypted values for processing with safe conversion
@@ -407,32 +371,25 @@ def submit(
 @api.post("/predict-diabetes/")
 def predict_diabetes(request, participant_id: int = Form(...), consent: bool = Form(True)):
     """Predict diabetes risk for a participant using their data and fingerprints. If consent is True, save result."""
-    print(f"[DEBUG] predict_diabetes called with participant_id={participant_id}, consent={consent}")
     try:
         # Get participant
         participant = Participant.objects.get(id=participant_id)
-        print(f"[DEBUG] Found participant: {participant.id}, age={participant.age}, gender={participant.gender}")
         # Initialize predictor
         predictor = DiabetesPredictor()
-        print(f"[DEBUG] DiabetesPredictor initialized")
         # Get prediction
         prediction_result = predictor.predict_diabetes_risk(participant)
-        print(f"[DEBUG] Prediction result: {prediction_result}")
         if prediction_result.get('error'):
-            print(f"[DEBUG] Prediction error: {prediction_result['error']}")
             return {
                 "success": False,
                 "error": prediction_result['error']
             }
         if consent:
             # Save result to database
-            print(f"[DEBUG] Consent=True, saving result to database")
             result = Result.objects.create(
                 participant=participant,
                 diabetes_risk=prediction_result['risk'],
                 confidence_score=prediction_result['confidence']
             )
-            print(f"[DEBUG] Result saved with ID: {result.id}")
             return {
                 "success": True,
                 "participant_id": participant_id,
@@ -451,7 +408,6 @@ def predict_diabetes(request, participant_id: int = Form(...), consent: bool = F
                 "saved": True
             }
         else:
-            print(f"[DEBUG] Consent=False, not saving result")
             return {
                 "success": True,
                 "participant_id": participant_id,
@@ -469,13 +425,11 @@ def predict_diabetes(request, participant_id: int = Form(...), consent: bool = F
                 "saved": False
             }
     except Participant.DoesNotExist:
-        print(f"[DEBUG] Participant with ID {participant_id} not found")
         return {
             "success": False,
             "error": f"Participant with ID {participant_id} not found"
         }
     except Exception as e:
-        print(f"[DEBUG] Exception in predict_diabetes: {str(e)}")
         return {
             "success": False,
             "error": f"Prediction failed: {str(e)}"
@@ -525,9 +479,6 @@ def predict_diabetes_from_json(request):
         participant_data = body.get('participant_data', {})
         fingerprints = body.get('fingerprints', [])
         
-        print(f"[DEBUG] JSON prediction - participant_data: {participant_data}")
-        print(f"[DEBUG] JSON prediction - fingerprints: {fingerprints}")
-        
         # Build fingerprint patterns dict
         fingerprint_patterns = {}
         for fp in fingerprints:
@@ -555,8 +506,6 @@ def predict_diabetes_from_json(request):
             "right_pinky": fingerprint_patterns.get("right_pinky"),
         }
         
-        print(f"[DEBUG] JSON prediction data: {prediction_data}")
-        
         # Make prediction
         predictor = DiabetesPredictor()
         df = predictor.prepare_input_df(prediction_data, model_key='A')
@@ -567,8 +516,6 @@ def predict_diabetes_from_json(request):
         
         pred = model.predict(df)[0]
         risk = 'DIABETIC' if str(pred).lower() in ['diabetic', '1', 'at risk', 'risk', 'positive'] else 'HEALTHY'
-        
-        print(f"[DEBUG] JSON prediction result: {risk}")
         
         return {
             "success": True,
@@ -588,7 +535,6 @@ def predict_diabetes_from_json(request):
         }
         
     except Exception as e:
-        print(f"[DEBUG] JSON prediction error: {str(e)}")
         return {"success": False, "error": f"JSON prediction failed: {str(e)}"}
 
 @api.post("/decrypt-data/")
