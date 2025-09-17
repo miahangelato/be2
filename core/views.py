@@ -1,6 +1,8 @@
 from ninja import NinjaAPI, File, Query, Form, UploadedFile, Schema
+from .fingerprint_classifier_utils import classify_fingerprint_pattern
+from .bloodgroup_classifier import classify_blood_group_from_multiple
 from .models import Participant, Fingerprint, Result
-from .ml_availability import ml_available, get_ml_status
+from .diabetes_predictor import get_diabetes_predictor
 import base64
 import os
 from typing import Dict, Any
@@ -10,25 +12,6 @@ from django.http import JsonResponse
 from django.conf import settings
 from .encryption_utils import encryption_service
 from .backend_decryption import backend_decryption
-
-# Import ML modules conditionally
-try:
-    from .fingerprint_classifier_utils import classify_fingerprint_pattern
-    ML_FINGERPRINT_AVAILABLE = True
-except ImportError:
-    ML_FINGERPRINT_AVAILABLE = False
-
-try:
-    from .bloodgroup_classifier import classify_blood_group_from_multiple
-    ML_BLOODGROUP_AVAILABLE = True
-except ImportError:
-    ML_BLOODGROUP_AVAILABLE = False
-
-try:
-    from .diabetes_predictor import DiabetesPredictor
-    ML_DIABETES_AVAILABLE = True
-except ImportError:
-    ML_DIABETES_AVAILABLE = False
 
 api = NinjaAPI()
 
@@ -40,43 +23,41 @@ def ping(request):
 @api.get("/health/")
 def health_check(request):
     """
-    Health check endpoint that checks system status
-    Use this to check deployment status and ML availability
+    Health check endpoint that ensures models are loaded
+    Use this to warm up the application after deployment
     """
     try:
-        # Get ML package status
-        ml_status = get_ml_status()
+        # Check if models are cached locally
+        fingerprint_cache = os.path.join(settings.BASE_DIR, "core", "improved_pattern_cnn_model.h5")
+        bloodgroup_cache = os.path.join(settings.BASE_DIR, "core", "bloodgroup_model_20250823-140933.h5")
         
-        # Check database connectivity
-        from django.db import connection
-        with connection.cursor() as cursor:
-            cursor.execute("SELECT 1")
-            db_status = "connected"
+        models_status = {
+            "fingerprint_model_cached": os.path.exists(fingerprint_cache),
+            "bloodgroup_model_cached": os.path.exists(bloodgroup_cache),
+        }
+        
+        # Try to load models to ensure they work (this will download if not cached)
+        if not models_status["fingerprint_model_cached"]:
+            from .fingerprint_classifier_utils import model  # This will download and cache
+            models_status["fingerprint_model_cached"] = True
+            
+        if not models_status["bloodgroup_model_cached"]:
+            from .bloodgroup_classifier import BloodGroupClassifier
+            classifier = BloodGroupClassifier()  # This will download and cache
+            models_status["bloodgroup_model_cached"] = True
+        
+        return {
+            "status": "healthy",
+            "models": models_status,
+            "message": "All models loaded and ready"
+        }
+        
     except Exception as e:
-        db_status = f"error: {str(e)}"
-    
-    # Check S3 connectivity
-    try:
-        import boto3
-        from django.conf import settings
-        s3_client = boto3.client('s3')
-        s3_client.head_bucket(Bucket=settings.AWS_STORAGE_BUCKET_NAME)
-        s3_status = "connected"
-    except Exception as e:
-        s3_status = f"error: {str(e)}"
-    
-    return {
-        "status": "healthy" if ml_status['all_available'] else "partial",
-        "database": db_status,
-        "s3_storage": s3_status,
-        "ml_packages": ml_status,
-        "features": {
-            "fingerprint_analysis": ML_FINGERPRINT_AVAILABLE,
-            "bloodgroup_analysis": ML_BLOODGROUP_AVAILABLE,
-            "diabetes_prediction": ML_DIABETES_AVAILABLE,
-        },
-        "message": "All systems operational" if ml_status['all_available'] else "ML features disabled - minimal deployment mode"
-    }
+        return JsonResponse({
+            "status": "unhealthy",
+            "error": str(e),
+            "message": "Models not ready"
+        }, status=503)
 
 @api.post("/identify-blood-group-from-participant/")
 def identify_blood_group_from_participant(request, participant_id: int = Query(...)):
@@ -99,14 +80,7 @@ def identify_blood_group_from_participant(request, participant_id: int = Query(.
     for fp in fingerprints:
         if fp.image and os.path.exists(fp.image.path):
             try:
-                if not ML_BLOODGROUP_AVAILABLE:
-                    pred = {
-                        'predicted_blood_group': 'ML_UNAVAILABLE',
-                        'confidence': 0.0,
-                        'all_probabilities': {}
-                    }
-                else:
-                    pred = classify_blood_group_from_multiple([fp.image.path])
+                pred = classify_blood_group_from_multiple([fp.image.path])
                 predicted_blood_group = pred['predicted_blood_group']
                 results.append({
                     "finger": fp.finger,
@@ -123,19 +97,20 @@ def identify_blood_group_from_participant(request, participant_id: int = Query(.
     return {"participant_id": participant_id, "results": results, "predicted_blood_group": predicted_blood_group}
     
 @api.post("/identify-blood-group-from-json/")
-def identify_blood_group_from_json(request, json: str = Form(...), files: list[UploadedFile] = File(...)):
+def identify_blood_group_from_json(request, json_data: str = Form(...), files: list[UploadedFile] = File(...)):
     """
     Identify blood group for each uploaded fingerprint image, using metadata from JSON (consent=false flow).
     Expects:
-      - json: JSON string with 'fingerprints' (list of dicts with 'finger', 'image_name', ...)
+      - json_data: JSON string with 'fingerprints' (list of dicts with 'finger', 'image_name', ...)
       - files: uploaded fingerprint images (order or name must match JSON)
     Returns a list of predictions, one per image.
     """
     import tempfile, shutil
     results = []
     temp_paths = []
+    predicted_blood_group = None  # Initialize to avoid undefined variable
     try:
-        data = pyjson.loads(json)
+        data = pyjson.loads(json_data)
         fingerprints_meta = data.get('fingerprints', [])
         # Map image_name to file
         file_map = {f.name: f for f in files}
@@ -153,7 +128,9 @@ def identify_blood_group_from_json(request, json: str = Form(...), files: list[U
             temp_paths.append(temp_path)
             try:
                 pred = classify_blood_group_from_multiple([temp_path])
-                predicted_blood_group = pred['predicted_blood_group']
+                current_prediction = pred['predicted_blood_group']
+                if predicted_blood_group is None:
+                    predicted_blood_group = current_prediction  # Use first successful prediction
                 results.append({
                     "finger": fp_meta.get('finger'),
                     "image_name": img_name,
@@ -288,10 +265,7 @@ def submit(
     fingerprints = []
     for finger_name, img_file in finger_files.items():
         if img_file and hasattr(img_file, 'file'):
-            if not ML_FINGERPRINT_AVAILABLE:
-                pattern = "ML_UNAVAILABLE"  # Placeholder when ML packages not installed
-            else:
-                pattern = classify_fingerprint_pattern(img_file.file)
+            pattern = classify_fingerprint_pattern(img_file.file)
             fingerprints.append({
                 "finger": finger_name,
                 "pattern": pattern,
@@ -401,17 +375,10 @@ def submit(
 def predict_diabetes(request, participant_id: int = Form(...), consent: bool = Form(True)):
     """Predict diabetes risk for a participant using their data and fingerprints. If consent is True, save result."""
     try:
-        # Check if ML packages are available
-        if not ML_DIABETES_AVAILABLE:
-            return JsonResponse({
-                "error": "Diabetes prediction not available - ML packages not installed",
-                "message": "This feature is disabled in minimal deployment mode"
-            }, status=503)
-            
         # Get participant
         participant = Participant.objects.get(id=participant_id)
         # Initialize predictor
-        predictor = DiabetesPredictor()
+        predictor = get_diabetes_predictor()
         # Get prediction
         prediction_result = predictor.predict_diabetes_risk(participant)
         if prediction_result.get('error'):
@@ -477,7 +444,7 @@ def get_participant_data(request, participant_id: int):
     """Get participant data formatted like the dataset for diabetes prediction"""
     try:
         participant = Participant.objects.get(id=participant_id)
-        predictor = DiabetesPredictor()
+        predictor = get_diabetes_predictor()
         
         # Get formatted data
         participant_data = predictor.prepare_participant_data(participant)
@@ -543,7 +510,8 @@ def predict_diabetes_from_json(request):
         }
         
         # Make prediction
-        predictor = DiabetesPredictor()
+        try:
+            predictor = get_diabetes_predictor()
         df = predictor.prepare_input_df(prediction_data, model_key='A')
         model = predictor.models.get('A')
         

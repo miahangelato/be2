@@ -25,7 +25,7 @@ class DiabetesPredictor:
         }
         self.models = {}
         self.model_columns = {}
-        self.load_models()
+        # Don't load models during initialization - use lazy loading
 
     def download_file_from_s3(self, url, local_path):
         """Download a file from S3 and save it locally"""
@@ -42,6 +42,57 @@ class DiabetesPredictor:
         except Exception as e:
             print(f"Failed to download {url}: {e}")
             return False
+
+    def ensure_model_loaded(self, model_key='A'):
+        """Ensure the specified model is loaded (lazy loading)"""
+        if model_key in self.models and model_key in self.model_columns:
+            return True
+            
+        # Load model
+        model_path = self.model_paths[model_key]
+        try:
+            if os.path.exists(model_path):
+                with open(model_path, 'rb') as f:
+                    self.models[model_key] = pickle.load(f)
+            elif model_key == 'A' and model_key in self.s3_urls:
+                # Download model A from S3 if not found locally
+                if self.download_file_from_s3(self.s3_urls[model_key], model_path):
+                    with open(model_path, 'rb') as f:
+                        self.models[model_key] = pickle.load(f)
+                else:
+                    self.models[model_key] = None
+                    return False
+            else:
+                self.models[model_key] = None
+                return False
+        except Exception as e:
+            print(f"Error loading diabetes model {model_key}: {e}")
+            self.models[model_key] = None
+            return False
+            
+        # Load columns
+        cols_path = self.cols_paths[model_key]
+        try:
+            if os.path.exists(cols_path):
+                with open(cols_path, 'rb') as f:
+                    self.model_columns[model_key] = pickle.load(f)
+            elif model_key == 'A' and f'{model_key}_cols' in self.s3_urls:
+                # Download columns A from S3 if not found locally
+                if self.download_file_from_s3(self.s3_urls[f'{model_key}_cols'], cols_path):
+                    with open(cols_path, 'rb') as f:
+                        self.model_columns[model_key] = pickle.load(f)
+                else:
+                    self.model_columns[model_key] = None
+                    return False
+            else:
+                self.model_columns[model_key] = None
+                return False
+        except Exception as e:
+            print(f"Error loading diabetes model columns {model_key}: {e}")
+            self.model_columns[model_key] = None
+            return False
+            
+        return True
 
     def load_models(self):
         for key in self.model_paths:
@@ -149,13 +200,21 @@ class DiabetesPredictor:
     def predict_diabetes_risk(self, participant, model_key='A'):
         """Predict diabetes risk using the selected model (A or B)."""
         try:
+            # Ensure model is loaded
+            if not self.ensure_model_loaded(model_key):
+                return {
+                    'risk': 'unknown',
+                    'confidence': 0.0,
+                    'error': f'Failed to load diabetes model {model_key}',
+                }
+                
             model = self.models.get(model_key)
             model_cols = self.model_columns.get(model_key)
             if model is None or model_cols is None:
                 return {
                     'risk': 'unknown',
                     'confidence': 0.0,
-                    'error': f'Model {model_key} not loaded',
+                    'error': f'Model {model_key} not available after loading attempt',
                 }
             participant_data = self.prepare_participant_data(participant)
             df = self.prepare_input_df(participant_data, model_key)
@@ -176,4 +235,15 @@ class DiabetesPredictor:
                 'error': f'Prediction failed: {str(e)}',
                 'model_used': model_key
             }
+
+
+# Global instance for lazy loading
+_diabetes_predictor_instance = None
+
+def get_diabetes_predictor():
+    """Get or create a diabetes predictor instance (lazy loading)"""
+    global _diabetes_predictor_instance
+    if _diabetes_predictor_instance is None:
+        _diabetes_predictor_instance = DiabetesPredictor()
+    return _diabetes_predictor_instance
     
