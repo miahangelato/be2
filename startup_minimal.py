@@ -34,9 +34,43 @@ def main():
         django.setup()
         logger.info("✅ Django setup complete")
         
-        # Skip model preloading for now - focus on getting basic app running
-        logger.info("🤖 Skipping model preloading - models will download on first request")
-        logger.info("📝 This reduces startup time and memory usage during deployment")
+        # Optional model preloading with better error handling
+        logger.info("🤖 Attempting to preload ML models from S3...")
+        try:
+            # Check if model preloading should be skipped
+            skip_preloading = os.environ.get('SKIP_MODEL_PRELOADING', 'False').lower() == 'true'
+            
+            if skip_preloading:
+                logger.info("📝 Model preloading skipped (SKIP_MODEL_PRELOADING=True)")
+            else:
+                # Try to preload each model individually with error handling
+                models_loaded = 0
+                
+                try:
+                    from core.fingerprint_classifier_utils import get_model
+                    fingerprint_model = get_model()
+                    logger.info("✅ Fingerprint classification model loaded")
+                    models_loaded += 1
+                except Exception as e:
+                    logger.warning(f"⚠️ Fingerprint model loading failed: {e}")
+                
+                try:
+                    from core.bloodgroup_classifier import get_blood_group_classifier
+                    blood_classifier = get_blood_group_classifier()
+                    blood_classifier.ensure_model_loaded()  # Force load
+                    logger.info("✅ Blood group classification model loaded")
+                    models_loaded += 1
+                except Exception as e:
+                    logger.warning(f"⚠️ Blood group model loading failed: {e}")
+                
+                if models_loaded > 0:
+                    logger.info(f"✅ {models_loaded}/2 ML models loaded successfully")
+                else:
+                    logger.warning("⚠️ No ML models loaded - they will be downloaded on first request")
+            
+        except Exception as e:
+            logger.warning(f"⚠️ Model preloading warning: {e}")
+            logger.info("📝 Models will be downloaded on first request instead")
         
         # Run migrations
         logger.info("📋 Running database migrations...")

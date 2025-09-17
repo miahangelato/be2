@@ -14,10 +14,15 @@ class BloodGroupClassifier:
         self.model = None
         self.model_path = os.path.join(os.path.dirname(__file__), 'bloodgroup_model_20250823-140933.h5')
         self.s3_url = "https://team3thesis.s3.us-east-1.amazonaws.com/models/backend/core%5Cbloodgroup_model_20250823-140933.h5"
-        self.load_model()
+        # Don't load model on init - load it on first use
         
         # Blood group classes based on the Kaggle dataset
         self.blood_groups = ['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-']
+    
+    def ensure_model_loaded(self):
+        """Ensure the model is loaded (lazy loading)"""
+        if self.model is None:
+            self.load_model()
     
     def load_model_from_s3_url(self, url, cache_path=None):
         """
@@ -126,6 +131,9 @@ class BloodGroupClassifier:
             }
         """
         try:
+            # Ensure model is loaded before using it
+            self.ensure_model_loaded()
+            
             if self.model is None:
                 raise ValueError("Model not loaded")
             
@@ -212,17 +220,26 @@ class BloodGroupClassifier:
         highest_confidence_entry = max(predictions, key=lambda x: x['confidence'])
         return highest_confidence_entry['predicted_blood_group']
 
-# Create a global instance
-blood_group_classifier = BloodGroupClassifier()
+# Global instance - will be created on first use
+_blood_group_classifier = None
+
+def get_blood_group_classifier():
+    """Get or create the global blood group classifier instance"""
+    global _blood_group_classifier
+    if _blood_group_classifier is None:
+        _blood_group_classifier = BloodGroupClassifier()
+    return _blood_group_classifier
 
 def classify_blood_group(fingerprint_image_path):
     """
     Convenience function to classify blood group from a single fingerprint
     """
-    return blood_group_classifier.predict_blood_group(fingerprint_image_path)
+    classifier = get_blood_group_classifier()
+    return classifier.predict_blood_group(fingerprint_image_path)
 
 def classify_blood_group_from_multiple(fingerprint_paths):
     """
     Convenience function to classify blood group from multiple fingerprints
     """
-    return blood_group_classifier.predict_from_multiple_fingerprints(fingerprint_paths)
+    classifier = get_blood_group_classifier()
+    return classifier.predict_from_multiple_fingerprints(fingerprint_paths)

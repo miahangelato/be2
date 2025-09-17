@@ -122,10 +122,10 @@ if db_url:
     try:
         from urllib.parse import urlparse
         
-        print(f"Parsing DATABASE_URL: {db_url}")  # Full URL for debugging
+        print(f"Full DATABASE_URL: {db_url}")  # Show full URL for debugging
         parsed = urlparse(db_url)
         
-        print(f"Parsed components:")
+        print(f"Parsed URL components:")
         print(f"  scheme: {parsed.scheme}")
         print(f"  hostname: {parsed.hostname}")
         print(f"  port: {parsed.port}")
@@ -134,14 +134,16 @@ if db_url:
         
         # Extract database name from path
         db_name = parsed.path[1:] if parsed.path.startswith('/') else parsed.path
+        if not db_name:
+            db_name = 'thesis'  # Default database name
         
         DATABASES = {
             'default': {
                 'ENGINE': 'django.db.backends.postgresql',
                 'NAME': db_name,
-                'USER': parsed.username,
-                'PASSWORD': parsed.password,
-                'HOST': parsed.hostname,
+                'USER': parsed.username or 'postgres',
+                'PASSWORD': parsed.password or '',
+                'HOST': parsed.hostname or 'localhost',
                 'PORT': str(parsed.port) if parsed.port else '5432',
                 'CONN_MAX_AGE': 600,
                 'CONN_HEALTH_CHECKS': True,
@@ -151,24 +153,32 @@ if db_url:
             }
         }
         
-        print(f"Final database config:")
+        print(f"Final database configuration:")
+        print(f"  ENGINE: {DATABASES['default']['ENGINE']}")
         print(f"  HOST: {DATABASES['default']['HOST']}")
         print(f"  NAME: {DATABASES['default']['NAME']}")
         print(f"  USER: {DATABASES['default']['USER']}")
         print(f"  PORT: {DATABASES['default']['PORT']}")
+        print(f"  PASSWORD: {'***' if DATABASES['default']['PASSWORD'] else 'None'}")
         
     except Exception as e:
         print(f"Error parsing DATABASE_URL manually: {e}")
         import traceback
         traceback.print_exc()
-        # Fallback to dj_database_url if manual parsing fails
+        
+        # Fallback: try using environment variables directly
+        print("Falling back to environment variables...")
         DATABASES = {
-            'default': dj_database_url.config(
-                default=db_url,
-                conn_max_age=600,
-                conn_health_checks=True,
-                ssl_require=False
-            )
+            'default': {
+                'ENGINE': 'django.db.backends.postgresql',
+                'NAME': os.environ.get('DB_NAME', 'thesis'),
+                'USER': os.environ.get('DB_USER', 'postgres'),
+                'PASSWORD': os.environ.get('DB_PASSWORD', '123ediwow'),
+                'HOST': os.environ.get('DB_HOST', 'postgres-production-a437.up.railway.app'),
+                'PORT': os.environ.get('DB_PORT', '5432'),
+                'CONN_MAX_AGE': 600,
+                'CONN_HEALTH_CHECKS': True,
+            }
         }
 else:
     print("No DATABASE_URL found, using fallback configuration")
