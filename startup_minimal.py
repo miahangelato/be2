@@ -47,14 +47,9 @@ def main():
             logger.error(f"❌ Migration error: {e}")
             # Continue anyway for Railway
         
-        # Collect static files (if using S3, this may not be needed)
-        logger.info("📁 Collecting static files...")
-        try:
-            call_command('collectstatic', '--noinput', verbosity=1)
-            logger.info("✅ Static files collected")
-        except Exception as e:
-            logger.warning(f"⚠️ Static files warning: {e}")
-            # Continue anyway
+        # Skip static files collection for Railway (using S3)
+        logger.info("📁 Skipping static files collection (using S3 for static files)")
+        logger.info("📝 This prevents startup delays and uses S3 directly")
         
         # Start Gunicorn server
         port = os.getenv('PORT', '8000')
