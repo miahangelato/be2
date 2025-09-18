@@ -10,6 +10,8 @@ dj-database-url==2.1.0
 # Essential packages
 requests==2.32.5
 python-dotenv==1.1.1
+cryptography==42.0.5
+Pillow==10.3.0
 
 # AWS and storage
 boto3==1.35.36
