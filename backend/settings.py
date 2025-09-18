@@ -73,6 +73,7 @@ INSTALLED_APPS = [
 
 MIDDLEWARE = [
     'corsheaders.middleware.CorsMiddleware',
+    'core.cors_debug_middleware.CORSDebugMiddleware',  # Debug CORS issues
     'django.middleware.security.SecurityMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
@@ -369,4 +370,77 @@ DATA_UPLOAD_MAX_MEMORY_SIZE = 10 * 1024 * 1024  # 10MB
 FILE_UPLOAD_PERMISSIONS = 0o644
 DATA_UPLOAD_MAX_NUMBER_FIELDS = 100
 
+# CORS Configuration with extensive debugging
+print(f"🔍 DEBUG MODE: {DEBUG}")
+print(f"🔍 DJANGO DEBUG: {DEBUG}")
+
 CORS_ALLOW_ALL_ORIGINS = DEBUG  # Only allow all origins in development
+print(f"🔍 CORS_ALLOW_ALL_ORIGINS: {CORS_ALLOW_ALL_ORIGINS}")
+
+# Production CORS settings with detailed logging
+if not DEBUG:
+    CORS_ALLOWED_ORIGINS = [
+        "https://fe-hd7w.vercel.app",  # Vercel frontend
+        "https://www.fe-hd7w.vercel.app",  # www subdomain
+        "http://localhost:3000",  # Local development
+        "http://127.0.0.1:3000",  # Local development alternative
+    ]
+    
+    print(f"🔍 PRODUCTION MODE - CORS ALLOWED ORIGINS: {CORS_ALLOWED_ORIGINS}")
+    
+    # Also allow the domains for preflight requests
+    CORS_ALLOWED_ORIGIN_REGEXES = [
+        r"^https://.*\.vercel\.app$",  # All Vercel deployments
+    ]
+    
+    print(f"🔍 CORS ALLOWED ORIGIN REGEXES: {CORS_ALLOWED_ORIGIN_REGEXES}")
+else:
+    print("🔍 DEVELOPMENT MODE: CORS allows ALL origins")
+
+# Check middleware configuration
+print(f"🔍 CORS in INSTALLED_APPS: {'corsheaders' in INSTALLED_APPS}")
+middleware_list = MIDDLEWARE if hasattr(MIDDLEWARE, '__iter__') else []
+cors_middleware_present = 'corsheaders.middleware.CorsMiddleware' in middleware_list
+print(f"🔍 CORS middleware present: {cors_middleware_present}")
+if cors_middleware_present:
+    cors_position = middleware_list.index('corsheaders.middleware.CorsMiddleware')
+    print(f"🔍 CORS middleware position: {cors_position} (should be 0 or 1)")
+print(f"🔍 MIDDLEWARE ORDER: {MIDDLEWARE}")
+
+# Force more permissive CORS for debugging
+CORS_ALLOW_CREDENTIALS = True
+CORS_PREFLIGHT_MAX_AGE = 86400
+CORS_EXPOSE_HEADERS = ['*']
+
+# Ensure all necessary headers are allowed
+CORS_ALLOW_HEADERS = [
+    'accept',
+    'accept-encoding', 
+    'authorization',
+    'content-type',
+    'dnt',
+    'origin',
+    'user-agent',
+    'x-csrftoken',
+    'x-requested-with',
+    'x-forwarded-for',
+    'x-forwarded-proto',
+]
+
+CORS_ALLOW_METHODS = [
+    'DELETE',
+    'GET',
+    'OPTIONS',
+    'PATCH', 
+    'POST',
+    'PUT',
+]
+
+print(f"🔍 CORS ALLOW CREDENTIALS: {CORS_ALLOW_CREDENTIALS}")
+print(f"🔍 CORS ALLOW HEADERS: {CORS_ALLOW_HEADERS}")
+print(f"🔍 CORS ALLOW METHODS: {CORS_ALLOW_METHODS}")
+
+# Emergency fallback - if production and CORS still not working, temporarily allow all
+if not DEBUG and os.environ.get('EMERGENCY_CORS_DEBUG') == 'true':
+    print("🚨 EMERGENCY CORS DEBUG MODE - ALLOWING ALL ORIGINS")
+    CORS_ALLOW_ALL_ORIGINS = True
