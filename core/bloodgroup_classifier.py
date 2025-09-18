@@ -14,15 +14,10 @@ class BloodGroupClassifier:
         self.model = None
         self.model_path = os.path.join(os.path.dirname(__file__), 'bloodgroup_model_20250823-140933.h5')
         self.s3_url = "https://team3thesis.s3.us-east-1.amazonaws.com/models/backend/core%5Cbloodgroup_model_20250823-140933.h5"
-        # Don't load model on init - load it on first use
+        self.load_model()
         
         # Blood group classes based on the Kaggle dataset
         self.blood_groups = ['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-']
-    
-    def ensure_model_loaded(self):
-        """Ensure the model is loaded (lazy loading)"""
-        if self.model is None:
-            self.load_model()
     
     def load_model_from_s3_url(self, url, cache_path=None):
         """
@@ -95,20 +90,26 @@ class BloodGroupClassifier:
         try:
             # Read the image as grayscale
             img = cv2.imread(image_path, cv2.IMREAD_GRAYSCALE)
+            print(f"[DEBUG] Reading image: {image_path}")
+            print(f"[DEBUG] After cv2.imread: shape={None if img is None else img.shape}, dtype={None if img is None else img.dtype}")
             if img is None:
                 raise ValueError(f"Could not read image from {image_path}")
 
             # Resize to (128, 128)
             img = cv2.resize(img, (128, 128))
+            print(f"[DEBUG] After cv2.resize: shape={img.shape}, dtype={img.dtype}")
 
             # Normalize pixel values
             img = img.astype(np.float32) / 255.0
+            print(f"[DEBUG] After normalization: shape={img.shape}, dtype={img.dtype}, min={img.min()}, max={img.max()}")
 
             # Ensure the image has 3 channels (convert grayscale to RGB)
             img = cv2.cvtColor(img, cv2.COLOR_GRAY2RGB)
+            print(f"[DEBUG] After cv2.cvtColor: shape={img.shape}, dtype={img.dtype}")
 
             # Expand dims to (1, 128, 128, 3)
             img = np.expand_dims(img, axis=0)
+            print(f"[DEBUG] After np.expand_dims: shape={img.shape}, dtype={img.dtype}")
 
             return img
 
@@ -131,17 +132,16 @@ class BloodGroupClassifier:
             }
         """
         try:
-            # Ensure model is loaded before using it
-            self.ensure_model_loaded()
-            
             if self.model is None:
                 raise ValueError("Model not loaded")
             
             # Preprocess the image
             processed_image = self.preprocess_fingerprint(fingerprint_image_path)
+            print(f"[DEBUG] Model input shape: {processed_image.shape}, dtype={processed_image.dtype}")
             
             # Make prediction
             predictions = self.model.predict(processed_image, verbose=0)
+            print(f"[DEBUG] Model output shape: {predictions.shape}, dtype={predictions.dtype}")
             
             # Get the predicted class and confidence
             predicted_class_index = np.argmax(predictions[0])
@@ -220,26 +220,17 @@ class BloodGroupClassifier:
         highest_confidence_entry = max(predictions, key=lambda x: x['confidence'])
         return highest_confidence_entry['predicted_blood_group']
 
-# Global instance - will be created on first use
-_blood_group_classifier = None
-
-def get_blood_group_classifier():
-    """Get or create the global blood group classifier instance"""
-    global _blood_group_classifier
-    if _blood_group_classifier is None:
-        _blood_group_classifier = BloodGroupClassifier()
-    return _blood_group_classifier
+# Create a global instance
+blood_group_classifier = BloodGroupClassifier()
 
 def classify_blood_group(fingerprint_image_path):
     """
     Convenience function to classify blood group from a single fingerprint
     """
-    classifier = get_blood_group_classifier()
-    return classifier.predict_blood_group(fingerprint_image_path)
+    return blood_group_classifier.predict_blood_group(fingerprint_image_path)
 
 def classify_blood_group_from_multiple(fingerprint_paths):
     """
     Convenience function to classify blood group from multiple fingerprints
     """
-    classifier = get_blood_group_classifier()
-    return classifier.predict_from_multiple_fingerprints(fingerprint_paths)
+    return blood_group_classifier.predict_from_multiple_fingerprints(fingerprint_paths)

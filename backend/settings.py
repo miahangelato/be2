@@ -35,7 +35,7 @@ except ImportError:
 # See https://docs.djangoproject.com/en/5.2/howto/deployment/checklist/
 
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = os.getenv('DJANGO_SECRET_KEY')
+SECRET_KEY = os.getenv('DJANGO_SECRET_KEY', 'your-default-secret-key')
 
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = os.getenv('DEBUG', 'False').lower() == 'true'
@@ -43,16 +43,14 @@ DEBUG = os.getenv('DEBUG', 'False').lower() == 'true'
 # Secure ALLOWED_HOSTS for production
 ALLOWED_HOSTS = [
     'localhost',
-    'vercel.app',
     '127.0.0.1',
     '.herokuapp.com',  # Allow all Heroku subdomains
     '.ngrok-free.app',  # For development testing
     '.ngrok.io',  # For development testing
-    '.up.railway.app',  # Allow all Railway subdomains
-    'be2-production.up.railway.app',  # Your specific Railway domain
 ]
 
-# Railway domains now included
+# Add your specific Heroku app domain when you create it
+# ALLOWED_HOSTS.append('your-app-name.herokuapp.com')
 
 
 # Application definition
@@ -103,100 +101,27 @@ TEMPLATES = [
 WSGI_APPLICATION = 'backend.wsgi.application'
 
 
-# Database - PostgreSQL for both development and production
+# Database - PostgreSQL for production (Heroku), SQLite for development
 # https://docs.djangoproject.com/en/5.2/ref/settings/#databases
 
+# Use DATABASE_URL from Heroku if available, otherwise use local PostgreSQL
 import dj_database_url
-import os
 
-# Check if we have a DATABASE_URL environment variable
-db_url = os.environ.get('DATABASE_URL')
-
-if db_url:
-    print(f"Found DATABASE_URL: {db_url[:30]}...")  # Debug output (truncated)
-    
-    # PostgreSQL configuration from DATABASE_URL
-    is_railway = bool(os.environ.get('RAILWAY_ENVIRONMENT'))
-    print(f"Railway environment: {is_railway}")
-    
-    # Manual URL parsing for Railway compatibility
-    try:
-        from urllib.parse import urlparse
-        
-        print(f"Full DATABASE_URL: {db_url}")  # Show full URL for debugging
-        parsed = urlparse(db_url)
-        
-        print(f"Parsed URL components:")
-        print(f"  scheme: {parsed.scheme}")
-        print(f"  hostname: {parsed.hostname}")
-        print(f"  port: {parsed.port}")
-        print(f"  username: {parsed.username}")
-        print(f"  path: {parsed.path}")
-        
-        # Extract database name from path
-        db_name = parsed.path[1:] if parsed.path.startswith('/') else parsed.path
-        if not db_name:
-            db_name = 'thesis'  # Default database name
-        
-        DATABASES = {
-            'default': {
-                'ENGINE': 'django.db.backends.postgresql',
-                'NAME': db_name,
-                'USER': parsed.username or 'postgres',
-                'PASSWORD': parsed.password or '',
-                'HOST': parsed.hostname or 'localhost',
-                'PORT': str(parsed.port) if parsed.port else '5432',
-                'CONN_MAX_AGE': 600,
-                'CONN_HEALTH_CHECKS': True,
-                'OPTIONS': {
-                    'options': '-c timezone=UTC'
-                }
-            }
-        }
-        
-        print(f"Final database configuration:")
-        print(f"  ENGINE: {DATABASES['default']['ENGINE']}")
-        print(f"  HOST: {DATABASES['default']['HOST']}")
-        print(f"  NAME: {DATABASES['default']['NAME']}")
-        print(f"  USER: {DATABASES['default']['USER']}")
-        print(f"  PORT: {DATABASES['default']['PORT']}")
-        print(f"  PASSWORD: {'***' if DATABASES['default']['PASSWORD'] else 'None'}")
-        
-    except Exception as e:
-        print(f"Error parsing DATABASE_URL manually: {e}")
-        import traceback
-        traceback.print_exc()
-        
-        # Fallback: try using environment variables directly
-        print("Falling back to environment variables...")
-        DATABASES = {
-            'default': {
-                'ENGINE': 'django.db.backends.postgresql',
-                'NAME': os.environ.get('DB_NAME', 'thesis'),
-                'USER': os.environ.get('DB_USER', 'postgres'),
-                'PASSWORD': os.environ.get('DB_PASSWORD', '123ediwow'),
-                'HOST': os.environ.get('DB_HOST', 'postgres-production-a437.up.railway.app'),
-                'PORT': os.environ.get('DB_PORT', '5432'),
-                'CONN_MAX_AGE': 600,
-                'CONN_HEALTH_CHECKS': True,
-            }
-        }
+if os.getenv('DATABASE_URL'):
+    # Production database (Heroku PostgreSQL)
+    DATABASES = {
+        'default': dj_database_url.parse(os.getenv('DATABASE_URL'))
+    }
 else:
-    print("No DATABASE_URL found, using fallback configuration")
-    # Fallback to manual PostgreSQL configuration if DATABASE_URL is not present
+    # Local development database
     DATABASES = {
         'default': {
             'ENGINE': 'django.db.backends.postgresql',
-            'NAME': os.environ.get('DB_NAME', 'thesis'),
-            'USER': os.environ.get('DB_USER', 'postgres'),
-            'PASSWORD': os.environ.get('DB_PASSWORD', '123ediwow'),
-            'HOST': os.environ.get('DB_HOST', 'localhost'),
-            'PORT': os.environ.get('DB_PORT', '5432'),
-            'CONN_MAX_AGE': 600,
-            'OPTIONS': {
-                'sslmode': 'prefer',
-                'options': '-c timezone=UTC',
-            },
+            'NAME': os.getenv('DB_NAME'),
+            'USER': os.getenv('DB_USER'),
+            'PASSWORD': os.getenv('DB_PASSWORD'),
+            'HOST': os.getenv('DB_HOST'),
+            'PORT': os.getenv('DB_PORT'),
         }
     }
 
@@ -241,28 +166,6 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 CORS_ALLOW_CREDENTIALS = True
 
-# CORS Headers Configuration
-CORS_ALLOW_HEADERS = [
-    'accept',
-    'accept-encoding',
-    'authorization',
-    'content-type',
-    'dnt',
-    'origin',
-    'user-agent',
-    'x-csrftoken',
-    'x-requested-with',
-]
-
-CORS_ALLOW_METHODS = [
-    'DELETE',
-    'GET',
-    'OPTIONS',
-    'PATCH',
-    'POST',
-    'PUT',
-]
-
 
 AWS_LOCATION = 'static'
 AWS_MEDIA_LOCATION = 'media'
@@ -273,10 +176,10 @@ STATICFILES_DIRS = [
 ]
 STATIC_ROOT = os.path.join(BASE_DIR, 'static', 'static_root')
 
-MEDIA_URL = '/media/'
+MEDIA_URL = 'media/'
 MEDIA_ROOT = os.path.join(BASE_DIR, 'media', 'media_root')
 
-# AWS S3 Security Configuration - SECURE FOR PRODUCTION
+# AWS S3 Security Configuration - ENHANCED FOR ENCRYPTION
 AWS_ACCESS_KEY_ID = os.getenv('AWS_ACCESS_KEY_ID')
 AWS_SECRET_ACCESS_KEY = os.getenv('AWS_SECRET_ACCESS_KEY')
 AWS_STORAGE_BUCKET_NAME = os.getenv('AWS_STORAGE_BUCKET_NAME')
@@ -284,48 +187,43 @@ AWS_S3_REGION_NAME = os.getenv('AWS_S3_REGION_NAME', 'us-east-1')
 AWS_S3_CUSTOM_DOMAIN = os.getenv('AWS_S3_CUSTOM_DOMAIN')
 AWS_S3_FILE_OVERWRITE = os.getenv('AWS_S3_FILE_OVERWRITE', 'False') == 'True'
 
-# SECURE ACL - Use private for security, but allow public read for media if needed
-AWS_DEFAULT_ACL = 'private'  # Keep private for security by default
+# FORCE ENCRYPTION - This ensures all uploads are encrypted
+AWS_DEFAULT_ACL = 'private'  # Make all files private by default
 AWS_S3_OBJECT_PARAMETERS = {
-    'CacheControl': 'max-age=86400',
-    'ServerSideEncryption': 'AES256',
-    'ACL': 'private',  # Force private ACL for uploaded files
-    'ContentDisposition': 'attachment',
+    'CacheControl': 'max-age=86400',  # Cache for 24 hours
+    'ServerSideEncryption': 'AES256',  # FORCE ENCRYPTION ON EVERY UPLOAD
+    'ACL': 'private',  # Force private ACL
+    'ContentDisposition': 'attachment',  # Force download instead of inline viewing
     'Metadata': {
         'uploaded-by': 'fingerprint-app',
         'security-level': 'high',
         'content-policy': 'restricted'
     }
 }
+AWS_S3_USE_SSL = True  # Force HTTPS
+AWS_S3_VERIFY = True  # Verify SSL certificates
+AWS_QUERYSTRING_AUTH = True  # Use signed URLs for access
+AWS_QUERYSTRING_EXPIRE = 1800  # URLs expire after 30 minutes (more secure)
+AWS_S3_SIGNATURE_VERSION = 's3v4'  # Use latest signature version
 
-# Separate configuration for public model files
-AWS_S3_PUBLIC_OBJECT_PARAMETERS = {
-    'CacheControl': 'max-age=86400',
-    'ACL': 'public-read',  # Allow public read for model files
-    'Metadata': {
-        'uploaded-by': 'fingerprint-app',
-        'content-type': 'model-file'
-    }
-}
-
-AWS_S3_USE_SSL = True
-AWS_S3_VERIFY = True
-AWS_QUERYSTRING_AUTH = True  # Use signed URLs for secure access
-AWS_QUERYSTRING_EXPIRE = 1800
-AWS_S3_SIGNATURE_VERSION = 's3v4'
+# Additional Security
 AWS_PRELOAD_METADATA = True
 AWS_S3_ADDRESSING_STYLE = 'virtual'
 
-# Configure media files based on environment
-if DEBUG:
-    # Local development - use local storage
-    MEDIA_URL = '/media/'
-    MEDIA_ROOT = os.path.join(BASE_DIR, 'media', 'media_root')
-else:
-    # Production - use S3
-    MEDIA_URL = f'https://{AWS_STORAGE_BUCKET_NAME}.s3.{AWS_S3_REGION_NAME}.amazonaws.com/{AWS_MEDIA_LOCATION}/'
-
 STORAGES = {
+    "default": {
+        "BACKEND": "storages.backends.s3boto3.S3Boto3Storage",
+        "OPTIONS": {
+            "location": AWS_MEDIA_LOCATION,
+            "default_acl": AWS_DEFAULT_ACL,
+            "querystring_auth": AWS_QUERYSTRING_AUTH,
+            "querystring_expire": AWS_QUERYSTRING_EXPIRE,
+            "object_parameters": AWS_S3_OBJECT_PARAMETERS,
+            "use_ssl": AWS_S3_USE_SSL,
+            "signature_version": AWS_S3_SIGNATURE_VERSION,
+            "addressing_style": AWS_S3_ADDRESSING_STYLE,
+        },
+    },
     "staticfiles": {
         "BACKEND": "storages.backends.s3boto3.S3StaticStorage",
         "OPTIONS": {
@@ -335,27 +233,6 @@ STORAGES = {
         },
     },
 }
-
-# Configure media storage based on environment
-if not DEBUG:
-    # Production - use S3 for media files
-    STORAGES["default"] = {
-        "BACKEND": "storages.backends.s3boto3.S3Boto3Storage",
-        "OPTIONS": {
-            "location": AWS_MEDIA_LOCATION,
-            "default_acl": 'public-read',  # Make media files publicly accessible
-            "querystring_auth": False,  # No need for signed URLs if public
-            "object_parameters": AWS_S3_OBJECT_PARAMETERS,
-            "use_ssl": AWS_S3_USE_SSL,
-            "signature_version": AWS_S3_SIGNATURE_VERSION,
-            "addressing_style": AWS_S3_ADDRESSING_STYLE,
-        },
-    }
-else:
-    # Development - use default file storage
-    STORAGES["default"] = {
-        "BACKEND": "django.core.files.storage.FileSystemStorage",
-    }
 
 
 # Security Settings - Enhanced for Production
@@ -392,19 +269,4 @@ DATA_UPLOAD_MAX_MEMORY_SIZE = 10 * 1024 * 1024  # 10MB
 FILE_UPLOAD_PERMISSIONS = 0o644
 DATA_UPLOAD_MAX_NUMBER_FIELDS = 100
 
-# CORS Configuration
 CORS_ALLOW_ALL_ORIGINS = DEBUG  # Only allow all origins in development
-
-# Production CORS settings
-if not DEBUG:
-    CORS_ALLOWED_ORIGINS = [
-        "https://fe-hd7w.vercel.app",  # Vercel frontend
-        "https://www.fe-hd7w.vercel.app",  # www subdomain
-        "http://localhost:3000",  # Local development
-        "http://127.0.0.1:3000",  # Local development alternative
-    ]
-    
-    # Also allow the domains for preflight requests
-    CORS_ALLOWED_ORIGIN_REGEXES = [
-        r"^https://.*\.vercel\.app$",  # All Vercel deployments
-    ]

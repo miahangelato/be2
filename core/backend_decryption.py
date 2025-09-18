@@ -2,7 +2,6 @@
 Backend encryption utilities that match frontend encryption
 """
 import base64
-import os
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
@@ -10,9 +9,9 @@ import hashlib
 
 class BackendDecryption:
     def __init__(self):
-        # Use environment variable for secret key (secure practice)
-        self.secret_key = os.getenv('ENCRYPTION_SECRET_KEY')
-        print(f"[🔑 KEY LOADED] Using encryption key from environment")
+        # Use the same key as frontend for compatibility
+        self.secret_key = "my-secret-key-2024"
+        print(f"[🔑 KEY LOADED] Using matching frontend key")
     
     def decrypt_crypto_js(self, encrypted_data):
         """

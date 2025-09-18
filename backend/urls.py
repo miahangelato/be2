@@ -18,14 +18,8 @@ from django.contrib import admin
 from django.urls import path, include
 from django.conf import settings
 from django.conf.urls.static import static
-from django.http import JsonResponse
-
-def root_health_check(request):
-    """Basic Django health check"""
-    return JsonResponse({"status": "ok", "message": "Django root is accessible"})
 
 urlpatterns = [
-    path('', root_health_check, name='root_health'),
     path('admin/', admin.site.urls),
     path('api/core/', include('core.urls')),
 ]
