@@ -90,26 +90,20 @@ class BloodGroupClassifier:
         try:
             # Read the image as grayscale
             img = cv2.imread(image_path, cv2.IMREAD_GRAYSCALE)
-            print(f"[DEBUG] Reading image: {image_path}")
-            print(f"[DEBUG] After cv2.imread: shape={None if img is None else img.shape}, dtype={None if img is None else img.dtype}")
             if img is None:
                 raise ValueError(f"Could not read image from {image_path}")
 
             # Resize to (128, 128)
             img = cv2.resize(img, (128, 128))
-            print(f"[DEBUG] After cv2.resize: shape={img.shape}, dtype={img.dtype}")
 
             # Normalize pixel values
             img = img.astype(np.float32) / 255.0
-            print(f"[DEBUG] After normalization: shape={img.shape}, dtype={img.dtype}, min={img.min()}, max={img.max()}")
 
             # Ensure the image has 3 channels (convert grayscale to RGB)
             img = cv2.cvtColor(img, cv2.COLOR_GRAY2RGB)
-            print(f"[DEBUG] After cv2.cvtColor: shape={img.shape}, dtype={img.dtype}")
 
             # Expand dims to (1, 128, 128, 3)
             img = np.expand_dims(img, axis=0)
-            print(f"[DEBUG] After np.expand_dims: shape={img.shape}, dtype={img.dtype}")
 
             return img
 
@@ -137,11 +131,9 @@ class BloodGroupClassifier:
             
             # Preprocess the image
             processed_image = self.preprocess_fingerprint(fingerprint_image_path)
-            print(f"[DEBUG] Model input shape: {processed_image.shape}, dtype={processed_image.dtype}")
             
             # Make prediction
             predictions = self.model.predict(processed_image, verbose=0)
-            print(f"[DEBUG] Model output shape: {predictions.shape}, dtype={predictions.dtype}")
             
             # Get the predicted class and confidence
             predicted_class_index = np.argmax(predictions[0])

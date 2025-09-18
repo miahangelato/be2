@@ -1,9 +1,6 @@
 from ninja import NinjaAPI, File, Query, Form, UploadedFile, Schema
-from .scanner import FingerprintScanner, dpfpdd, DPFPDD_SUCCESS
-from .fingerprint_classifier_utils import classify_fingerprint_pattern
-from .bloodgroup_classifier import classify_blood_group_from_multiple
 from .models import Participant, Fingerprint, Result
-from .diabetes_predictor import DiabetesPredictor
+from .ml_availability import ml_available, get_ml_status
 import base64
 import os
 from typing import Dict, Any
@@ -13,53 +10,73 @@ from django.http import JsonResponse
 from django.conf import settings
 from .encryption_utils import encryption_service
 from .backend_decryption import backend_decryption
-import logging
 
-logger = logging.getLogger(__name__)
+# Import ML modules conditionally
+try:
+    from .fingerprint_classifier_utils import classify_fingerprint_pattern
+    ML_FINGERPRINT_AVAILABLE = True
+except ImportError:
+    ML_FINGERPRINT_AVAILABLE = False
+
+try:
+    from .bloodgroup_classifier import classify_blood_group_from_multiple
+    ML_BLOODGROUP_AVAILABLE = True
+except ImportError:
+    ML_BLOODGROUP_AVAILABLE = False
+
+try:
+    from .diabetes_predictor import DiabetesPredictor
+    ML_DIABETES_AVAILABLE = True
+except ImportError:
+    ML_DIABETES_AVAILABLE = False
 
 api = NinjaAPI()
+
+@api.get("/ping/")
+def ping(request):
+    """Simple ping endpoint for basic health check"""
+    return {"status": "ok", "message": "Django app is running"}
 
 @api.get("/health/")
 def health_check(request):
     """
-    Health check endpoint that ensures models are loaded
-    Use this to warm up the application after deployment
+    Health check endpoint that checks system status
+    Use this to check deployment status and ML availability
     """
     try:
-        # Check if models are cached locally
-        fingerprint_cache = os.path.join(settings.BASE_DIR, "core", "improved_pattern_cnn_model.h5")
-        bloodgroup_cache = os.path.join(settings.BASE_DIR, "core", "bloodgroup_model_20250823-140933.h5")
+        # Get ML package status
+        ml_status = get_ml_status()
         
-        models_status = {
-            "fingerprint_model_cached": os.path.exists(fingerprint_cache),
-            "bloodgroup_model_cached": os.path.exists(bloodgroup_cache),
-        }
-        
-        # Try to load models to ensure they work (this will download if not cached)
-        if not models_status["fingerprint_model_cached"]:
-            logger.info("Fingerprint model not cached, triggering download...")
-            from .fingerprint_classifier_utils import model  # This will download and cache
-            models_status["fingerprint_model_cached"] = True
-            
-        if not models_status["bloodgroup_model_cached"]:
-            logger.info("Blood group model not cached, triggering download...")
-            from .bloodgroup_classifier import BloodGroupClassifier
-            classifier = BloodGroupClassifier()  # This will download and cache
-            models_status["bloodgroup_model_cached"] = True
-        
-        return {
-            "status": "healthy",
-            "models": models_status,
-            "message": "All models loaded and ready"
-        }
-        
+        # Check database connectivity
+        from django.db import connection
+        with connection.cursor() as cursor:
+            cursor.execute("SELECT 1")
+            db_status = "connected"
     except Exception as e:
-        logger.error(f"Health check failed: {e}")
-        return JsonResponse({
-            "status": "unhealthy",
-            "error": str(e),
-            "message": "Models not ready"
-        }, status=503)
+        db_status = f"error: {str(e)}"
+    
+    # Check S3 connectivity
+    try:
+        import boto3
+        from django.conf import settings
+        s3_client = boto3.client('s3')
+        s3_client.head_bucket(Bucket=settings.AWS_STORAGE_BUCKET_NAME)
+        s3_status = "connected"
+    except Exception as e:
+        s3_status = f"error: {str(e)}"
+    
+    return {
+        "status": "healthy" if ml_status['all_available'] else "partial",
+        "database": db_status,
+        "s3_storage": s3_status,
+        "ml_packages": ml_status,
+        "features": {
+            "fingerprint_analysis": ML_FINGERPRINT_AVAILABLE,
+            "bloodgroup_analysis": ML_BLOODGROUP_AVAILABLE,
+            "diabetes_prediction": ML_DIABETES_AVAILABLE,
+        },
+        "message": "All systems operational" if ml_status['all_available'] else "ML features disabled - minimal deployment mode"
+    }
 
 @api.post("/identify-blood-group-from-participant/")
 def identify_blood_group_from_participant(request, participant_id: int = Query(...)):
@@ -67,35 +84,30 @@ def identify_blood_group_from_participant(request, participant_id: int = Query(.
     Identify blood group for each fingerprint image of a participant (by participant_id).
     Returns a list of predictions, one per fingerprint.
     """
-    print("[DEBUG] Incoming request data:")
-    print(f"Participant ID: {participant_id}")
-    print("[DEBUG] Request validation started")
-    
     # Check if participant exists
     try:
         participant = Participant.objects.get(id=participant_id)
-        print(f"[DEBUG] Found participant: {participant.id}")
     except Participant.DoesNotExist:
-        print("[ERROR] Participant does not exist.")
         return {"error": "Participant not found.", "participant_id": participant_id}
 
     # Fetch fingerprints
     fingerprints = participant.fingerprints.all()
     if not fingerprints:
-        print("[ERROR] No fingerprints found for participant.")
         return {"error": "No fingerprints found.", "participant_id": participant_id}
-
-    print(f"[DEBUG] Found {len(fingerprints)} fingerprints for participant.")
 
     results = []
     for fp in fingerprints:
-        print(f"[DEBUG] Processing fingerprint for finger: {fp.finger}")
         if fp.image and os.path.exists(fp.image.path):
             try:
-                print(f"[DEBUG] Classifying fingerprint: {fp.image.path}")
-                pred = classify_blood_group_from_multiple([fp.image.path])
+                if not ML_BLOODGROUP_AVAILABLE:
+                    pred = {
+                        'predicted_blood_group': 'ML_UNAVAILABLE',
+                        'confidence': 0.0,
+                        'all_probabilities': {}
+                    }
+                else:
+                    pred = classify_blood_group_from_multiple([fp.image.path])
                 predicted_blood_group = pred['predicted_blood_group']
-                print(f"[DEBUG] Classification result: {predicted_blood_group}")
                 results.append({
                     "finger": fp.finger,
                     "filename": os.path.basename(fp.image.path),
@@ -104,13 +116,10 @@ def identify_blood_group_from_participant(request, participant_id: int = Query(.
                     "all_probabilities": pred.get('all_probabilities'),
                 })
             except Exception as e:
-                print(f"[ERROR] Failed to classify fingerprint: {e}")
                 results.append({"finger": fp.finger, "error": str(e)})
         else:
-            print(f"[WARNING] Fingerprint image not found or invalid for finger {fp.finger}.")
             results.append({"finger": fp.finger, "error": "Image not found"})
 
-    print(f"[DEBUG] Final results: {results}")
     return {"participant_id": participant_id, "results": results, "predicted_blood_group": predicted_blood_group}
     
 @api.post("/identify-blood-group-from-json/")
@@ -202,7 +211,6 @@ def submit(
     right_ring: UploadedFile = File(...),
     right_pinky: UploadedFile = File(...),
 ):
-    print("[📨 BACKEND RECEIVED] Raw encrypted parameters:")
     received_data = {
         "consent": consent,
         "age": age,
@@ -221,20 +229,8 @@ def submit(
         "last_donation_date": last_donation_date,
     }
     
-    for key, value in received_data.items():
-        if isinstance(value, str) and len(value) > 50:
-            print(f"  {key}: {value[:30]}... (possibly encrypted)")
-        else:
-            print(f"  {key}: {value}")
-    
-    print(f"[🔓 BACKEND DECRYPTING] Decrypting sensitive data...")
-    
     # Decrypt the received form data
     decrypted_data = backend_decryption.decrypt_form_data(received_data)
-    
-    print(f"[✅ BACKEND DECRYPTED] Final decrypted parameters:")
-    for key, value in decrypted_data.items():
-        print(f"  {key}: {value}")
     
     # Helper function to safely convert values
     def safe_convert(value, target_type, fallback=None):
@@ -251,7 +247,6 @@ def submit(
             else:
                 return value
         except (ValueError, TypeError) as e:
-            print(f"[⚠️ CONVERSION WARNING] Failed to convert {value} to {target_type.__name__}: {e}")
             return fallback
     
     # Use decrypted values for processing with safe conversion
@@ -293,7 +288,10 @@ def submit(
     fingerprints = []
     for finger_name, img_file in finger_files.items():
         if img_file and hasattr(img_file, 'file'):
-            pattern = classify_fingerprint_pattern(img_file.file)
+            if not ML_FINGERPRINT_AVAILABLE:
+                pattern = "ML_UNAVAILABLE"  # Placeholder when ML packages not installed
+            else:
+                pattern = classify_fingerprint_pattern(img_file.file)
             fingerprints.append({
                 "finger": finger_name,
                 "pattern": pattern,
@@ -356,78 +354,78 @@ def submit(
             "fingerprints": fingerprints,
         }
 
-@api.post("/scan-finger/")
-def scan_finger(request, finger_name: str = Query(...)):
-    scanner = None
-    try:
-        status = dpfpdd.dpfpdd_init()
-        if status != DPFPDD_SUCCESS:
-            return {
-                "success": False,
-                "error": "Failed to initialize fingerprint scanner. Please try again.",
-                "debug_info": f"Status = 0x{status:x}"
-            }
-        scanner = FingerprintScanner()
-        image_data = scanner.capture_fingerprint()
-        if not image_data:
-            return {
-                "success": False,
-                "error": "Failed to capture fingerprint. Please ensure your finger is properly placed on the scanner.",
-                "debug_info": "No image data returned"
-            }
-        base64_image = base64.b64encode(image_data).decode('utf-8')
-        return {
-            "success": True,
-            "image": base64_image,
-            "finger": finger_name
-        }
-    except Exception as e:
-        return {
-            "success": False,
-            "error": "An error occurred while scanning. Please try again.",
-            "debug_info": str(e)
-        }
-    finally:
-        if scanner:
-            try:
-                scanner.close()
-            except Exception:
-                pass
-        try:
-            dpfpdd.dpfpdd_exit()
-        except Exception:
-            pass
+# @api.post("/scan-finger/")
+# def scan_finger(request, finger_name: str = Query(...)):
+#     scanner = None
+#     try:
+#         status = dpfpdd.dpfpdd_init()
+#         if status != DPFPDD_SUCCESS:
+#             return {
+#                 "success": False,
+#                 "error": "Failed to initialize fingerprint scanner. Please try again.",
+#                 "debug_info": f"Status = 0x{status:x}"
+#             }
+#         scanner = FingerprintScanner()
+#         image_data = scanner.capture_fingerprint()
+#         if not image_data:
+#             return {
+#                 "success": False,
+#                 "error": "Failed to capture fingerprint. Please ensure your finger is properly placed on the scanner.",
+#                 "debug_info": "No image data returned"
+#             }
+#         base64_image = base64.b64encode(image_data).decode('utf-8')
+#         return {
+#             "success": True,
+#             "image": base64_image,
+#             "finger": finger_name
+#         }
+#     except Exception as e:
+#         return {
+#             "success": False,
+#             "error": "An error occurred while scanning. Please try again.",
+#             "debug_info": str(e)
+#         }
+#     finally:
+#         if scanner:
+#             try:
+#                 scanner.close()
+#             except Exception:
+#                 pass
+#         try:
+#             dpfpdd.dpfpdd_exit()
+#         except Exception:
+#             pass
 
 
 @api.post("/predict-diabetes/")
 def predict_diabetes(request, participant_id: int = Form(...), consent: bool = Form(True)):
     """Predict diabetes risk for a participant using their data and fingerprints. If consent is True, save result."""
-    print(f"[DEBUG] predict_diabetes called with participant_id={participant_id}, consent={consent}")
     try:
+        # Check if ML packages are available
+        if not ML_DIABETES_AVAILABLE:
+            return JsonResponse({
+                "error": "Diabetes prediction not available - ML packages not installed",
+                "message": "This feature is disabled in minimal deployment mode"
+            }, status=503)
+            
         # Get participant
         participant = Participant.objects.get(id=participant_id)
-        print(f"[DEBUG] Found participant: {participant.id}, age={participant.age}, gender={participant.gender}")
         # Initialize predictor
         predictor = DiabetesPredictor()
-        print(f"[DEBUG] DiabetesPredictor initialized")
         # Get prediction
         prediction_result = predictor.predict_diabetes_risk(participant)
-        print(f"[DEBUG] Prediction result: {prediction_result}")
         if prediction_result.get('error'):
-            print(f"[DEBUG] Prediction error: {prediction_result['error']}")
             return {
                 "success": False,
                 "error": prediction_result['error']
             }
         if consent:
             # Save result to database
-            print(f"[DEBUG] Consent=True, saving result to database")
             result = Result.objects.create(
                 participant=participant,
                 diabetes_risk=prediction_result['risk'],
                 confidence_score=prediction_result['confidence']
             )
-            print(f"[DEBUG] Result saved with ID: {result.id}")
             return {
                 "success": True,
                 "participant_id": participant_id,
@@ -446,7 +444,6 @@ def predict_diabetes(request, participant_id: int = Form(...), consent: bool = F
                 "saved": True
             }
         else:
-            print(f"[DEBUG] Consent=False, not saving result")
             return {
                 "success": True,
                 "participant_id": participant_id,
@@ -464,13 +461,11 @@ def predict_diabetes(request, participant_id: int = Form(...), consent: bool = F
                 "saved": False
             }
     except Participant.DoesNotExist:
-        print(f"[DEBUG] Participant with ID {participant_id} not found")
         return {
             "success": False,
             "error": f"Participant with ID {participant_id} not found"
         }
     except Exception as e:
-        print(f"[DEBUG] Exception in predict_diabetes: {str(e)}")
         return {
             "success": False,
             "error": f"Prediction failed: {str(e)}"
@@ -520,9 +515,6 @@ def predict_diabetes_from_json(request):
         participant_data = body.get('participant_data', {})
         fingerprints = body.get('fingerprints', [])
         
-        print(f"[DEBUG] JSON prediction - participant_data: {participant_data}")
-        print(f"[DEBUG] JSON prediction - fingerprints: {fingerprints}")
-        
         # Build fingerprint patterns dict
         fingerprint_patterns = {}
         for fp in fingerprints:
@@ -550,8 +542,6 @@ def predict_diabetes_from_json(request):
             "right_pinky": fingerprint_patterns.get("right_pinky"),
         }
         
-        print(f"[DEBUG] JSON prediction data: {prediction_data}")
-        
         # Make prediction
         predictor = DiabetesPredictor()
         df = predictor.prepare_input_df(prediction_data, model_key='A')
@@ -562,8 +552,6 @@ def predict_diabetes_from_json(request):
         
         pred = model.predict(df)[0]
         risk = 'DIABETIC' if str(pred).lower() in ['diabetic', '1', 'at risk', 'risk', 'positive'] else 'HEALTHY'
-        
-        print(f"[DEBUG] JSON prediction result: {risk}")
         
         return {
             "success": True,
@@ -583,7 +571,6 @@ def predict_diabetes_from_json(request):
         }
         
     except Exception as e:
-        print(f"[DEBUG] JSON prediction error: {str(e)}")
         return {"success": False, "error": f"JSON prediction failed: {str(e)}"}
 
 @api.post("/decrypt-data/")

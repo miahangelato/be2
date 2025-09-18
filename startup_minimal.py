@@ -34,61 +34,48 @@ def main():
         django.setup()
         logger.info("✅ Django setup complete")
         
-        # Skip model preloading for Railway deployment
-        logger.info("📝 Skipping ML model preloading for faster startup")
-        logger.info("🤖 Models will be downloaded on first request")
+        # Skip model preloading for now - focus on getting basic app running
+        logger.info("🤖 Skipping model preloading - models will download on first request")
+        logger.info("📝 This reduces startup time and memory usage during deployment")
         
-        # Run migrations with timeout protection
+        # Run migrations
         logger.info("📋 Running database migrations...")
         try:
-            # Set a timeout for migrations
-            import signal
-            
-            def timeout_handler(signum, frame):
-                raise TimeoutError("Migration timeout")
-            
-            # Windows doesn't support SIGALRM, so just run without timeout on Windows
-            if os.name != 'nt':
-                signal.signal(signal.SIGALRM, timeout_handler)
-                signal.alarm(30)  # 30 second timeout
-            
-            call_command('migrate', verbosity=0, run_syncdb=True)
-            
-            if os.name != 'nt':
-                signal.alarm(0)  # Cancel timeout
-                
+            call_command('migrate', verbosity=1)
             logger.info("✅ Migrations complete")
-        except TimeoutError:
-            logger.error("❌ Migration timeout - continuing anyway")
         except Exception as e:
-            logger.warning(f"⚠️ Migration warning: {e}")
+            logger.error(f"❌ Migration error: {e}")
             # Continue anyway for Railway
         
-        # Skip collectstatic for Railway (using S3)
-        logger.info("📁 Skipping static files collection (using S3)")
+        # Collect static files (if using S3, this may not be needed)
+        logger.info("📁 Collecting static files...")
+        try:
+            call_command('collectstatic', '--noinput', verbosity=1)
+            logger.info("✅ Static files collected")
+        except Exception as e:
+            logger.warning(f"⚠️ Static files warning: {e}")
+            # Continue anyway
         
         # Start Gunicorn server
         port = os.getenv('PORT', '8000')
         logger.info(f"🌐 Starting Gunicorn on port {port}")
         
-        # Execute Gunicorn with Railway-optimized settings
-        gunicorn_args = [
+        # Execute Gunicorn with optimized settings for Railway
+        os.execvp('gunicorn', [
             'gunicorn',
             'backend.wsgi:application',
             '--bind', f'0.0.0.0:{port}',
-            '--workers', '1',  # Single worker for free tier
+            '--workers', '2',  # Railway has limited memory
             '--worker-class', 'sync',
-            '--timeout', '60',  # Shorter timeout
-            '--keep-alive', '2',
-            '--max-requests', '500',  # Lower for stability
-            '--max-requests-jitter', '50',
+            '--timeout', '120',
+            '--keep-alive', '5',
+            '--max-requests', '1000',
+            '--max-requests-jitter', '100',
             '--log-level', 'info',
             '--access-logfile', '-',
-            '--error-logfile', '-'
-        ]
-        
-        logger.info(f"🚀 Executing: {' '.join(gunicorn_args)}")
-        os.execvp('gunicorn', gunicorn_args)
+            '--error-logfile', '-',
+            '--capture-output'
+        ])
         
     except Exception as e:
         logger.error(f"❌ Startup failed: {e}")
