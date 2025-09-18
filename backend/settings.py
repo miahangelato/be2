@@ -381,9 +381,10 @@ print(f"🔍 CORS_ALLOW_ALL_ORIGINS: {CORS_ALLOW_ALL_ORIGINS}")
 if not DEBUG:
     CORS_ALLOWED_ORIGINS = [
         "https://fe-hd7w.vercel.app",  # Vercel frontend
-        "https://www.fe-hd7w.vercel.app",  # www subdomain
+        "https://www.fe-hd7w.vercel.app",# www subdomain
         "http://localhost:3000",  # Local development
         "http://127.0.0.1:3000",  # Local development alternative
+        "https://ugsome-saltless-robbyn.ngrok-free.app",  # Ngrok scanner app
     ]
     
     print(f"🔍 PRODUCTION MODE - CORS ALLOWED ORIGINS: {CORS_ALLOWED_ORIGINS}")
@@ -440,7 +441,6 @@ print(f"🔍 CORS ALLOW CREDENTIALS: {CORS_ALLOW_CREDENTIALS}")
 print(f"🔍 CORS ALLOW HEADERS: {CORS_ALLOW_HEADERS}")
 print(f"🔍 CORS ALLOW METHODS: {CORS_ALLOW_METHODS}")
 
-# Emergency fallback - if production and CORS still not working, temporarily allow all
-if not DEBUG and os.environ.get('EMERGENCY_CORS_DEBUG') == 'true':
-    print("🚨 EMERGENCY CORS DEBUG MODE - ALLOWING ALL ORIGINS")
-    CORS_ALLOW_ALL_ORIGINS = True
+# Emergency fallback - TEMPORARILY allow all origins for debugging
+print("🚨 EMERGENCY CORS DEBUG MODE - ALLOWING ALL ORIGINS (FORCED)")
+CORS_ALLOW_ALL_ORIGINS = True
