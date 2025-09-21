@@ -84,43 +84,55 @@ def identify_blood_group_from_participant(request, participant_id: int = Query(.
     Identify blood group for each fingerprint image of a participant (by participant_id).
     Returns a list of predictions, one per fingerprint.
     """
-    # Check if participant exists
     try:
-        participant = Participant.objects.get(id=participant_id)
-    except Participant.DoesNotExist:
-        return {"error": "Participant not found.", "participant_id": participant_id}
+        # Check if participant exists
+        try:
+            participant = Participant.objects.get(id=participant_id)
+        except Participant.DoesNotExist:
+            return {"error": "Participant not found.", "participant_id": participant_id}
 
-    # Fetch fingerprints
-    fingerprints = participant.fingerprints.all()
-    if not fingerprints:
-        return {"error": "No fingerprints found.", "participant_id": participant_id}
+        # Fetch fingerprints
+        fingerprints = participant.fingerprints.all()
+        if not fingerprints:
+            return {"error": "No fingerprints found.", "participant_id": participant_id}
 
-    results = []
-    for fp in fingerprints:
-        if fp.image and os.path.exists(fp.image.path):
-            try:
-                if not ML_BLOODGROUP_AVAILABLE:
-                    pred = {
-                        'predicted_blood_group': 'ML_UNAVAILABLE',
-                        'confidence': 0.0,
-                        'all_probabilities': {}
-                    }
-                else:
-                    pred = classify_blood_group_from_multiple([fp.image.path])
-                predicted_blood_group = pred['predicted_blood_group']
-                results.append({
-                    "finger": fp.finger,
-                    "filename": os.path.basename(fp.image.path),
-                    "predicted_blood_group": pred['predicted_blood_group'],
-                    "confidence": pred['confidence'],
-                    "all_probabilities": pred.get('all_probabilities'),
-                })
-            except Exception as e:
-                results.append({"finger": fp.finger, "error": str(e)})
-        else:
-            results.append({"finger": fp.finger, "error": "Image not found"})
+        results = []
+        predicted_blood_group = None
+        
+        for fp in fingerprints:
+            if fp.image and os.path.exists(fp.image.path):
+                try:
+                    if not ML_BLOODGROUP_AVAILABLE:
+                        pred = {
+                            'predicted_blood_group': 'ML_UNAVAILABLE',
+                            'confidence': 0.0,
+                            'all_probabilities': {}
+                        }
+                    else:
+                        pred = classify_blood_group_from_multiple([fp.image.path])
+                    predicted_blood_group = pred['predicted_blood_group']
+                    results.append({
+                        "finger": fp.finger,
+                        "filename": os.path.basename(fp.image.path),
+                        "predicted_blood_group": pred['predicted_blood_group'],
+                        "confidence": pred['confidence'],
+                        "all_probabilities": pred.get('all_probabilities'),
+                    })
+                except Exception as e:
+                    import traceback
+                    error_msg = f"Blood group prediction error: {str(e)}\n{traceback.format_exc()}"
+                    print(error_msg)  # This will show in Railway logs
+                    results.append({"finger": fp.finger, "error": str(e)})
+            else:
+                results.append({"finger": fp.finger, "error": "Image not found"})
 
-    return {"participant_id": participant_id, "results": results, "predicted_blood_group": predicted_blood_group}
+        return {"participant_id": participant_id, "results": results, "predicted_blood_group": predicted_blood_group}
+        
+    except Exception as e:
+        import traceback
+        error_msg = f"Critical error in blood group identification: {str(e)}\n{traceback.format_exc()}"
+        print(error_msg)  # This will show in Railway logs
+        raise Exception(error_msg)
     
 @api.post("/identify-blood-group-from-json/")
 def identify_blood_group_from_json(request, json: str = Form(...), files: list[UploadedFile] = File(...)):
