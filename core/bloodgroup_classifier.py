@@ -14,10 +14,14 @@ class BloodGroupClassifier:
         self.model = None
         self.model_path = os.path.join(os.path.dirname(__file__), 'bloodgroup_model_20250823-140933.h5')
         self.s3_url = "https://team3thesis.s3.us-east-1.amazonaws.com/models/backend/core%5Cbloodgroup_model_20250823-140933.h5"
-        # Don't load model immediately - load it when needed
+        # Don't load model immediately - load it when needed for Railway memory optimization
         
         # Blood group classes based on the Kaggle dataset
         self.blood_groups = ['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-']
+        
+        # Railway optimization: Track loading attempts
+        self._load_attempts = 0
+        self._max_load_attempts = 3
     
     def load_model_from_s3_url(self, url, cache_path=None):
         """
@@ -28,67 +32,89 @@ class BloodGroupClassifier:
             response = requests.get(url, stream=True)
             response.raise_for_status()
             
-            with tempfile.NamedTemporaryFile(suffix='.h5', delete=False) as tmp:
-                total_size = int(response.headers.get('content-length', 0))
-                downloaded = 0
+            # Use a different approach for Windows compatibility
+            temp_path = None
+            try:
+                # Create temporary file without auto-delete
+                import tempfile
+                fd, temp_path = tempfile.mkstemp(suffix='.h5')
                 
-                for chunk in response.iter_content(chunk_size=8192):
-                    if chunk:
-                        tmp.write(chunk)
-                        downloaded += len(chunk)
-                        if total_size > 0 and downloaded % (1024 * 1024) == 0:  # Log every MB
-                            percent = (downloaded / total_size) * 100
-                            logger.info(f"Download progress: {percent:.1f}%")
-                
-                tmp.flush()
-                logger.info(f"Blood group model downloaded successfully ({downloaded} bytes)")
+                with os.fdopen(fd, 'wb') as tmp:
+                    total_size = int(response.headers.get('content-length', 0))
+                    downloaded = 0
+                    
+                    for chunk in response.iter_content(chunk_size=8192):
+                        if chunk:
+                            tmp.write(chunk)
+                            downloaded += len(chunk)
+                            if total_size > 0 and downloaded % (1024 * 1024) == 0:  # Log every MB
+                                percent = (downloaded / total_size) * 100
+                                logger.info(f"Download progress: {percent:.1f}%")
+                    
+                    tmp.flush()
+                    logger.info(f"Blood group model downloaded successfully ({downloaded} bytes)")
                 
                 # Load the model from temporary file
-                model = load_model(tmp.name)
+                model = load_model(temp_path)
                 
                 # Cache the model locally if cache_path is provided
                 if cache_path:
                     try:
                         os.makedirs(os.path.dirname(cache_path), exist_ok=True)
                         import shutil
-                        shutil.copy2(tmp.name, cache_path)
+                        shutil.copy2(temp_path, cache_path)
                         logger.info(f"Blood group model cached to: {cache_path}")
                     except Exception as e:
                         logger.warning(f"Failed to cache blood group model: {e}")
                 
-                # Clean up temporary file
-                os.unlink(tmp.name)
-                
                 return model
+                
+            finally:
+                # Clean up temporary file
+                if temp_path and os.path.exists(temp_path):
+                    try:
+                        os.unlink(temp_path)
+                    except OSError as e:
+                        logger.warning(f"Failed to delete temporary file {temp_path}: {e}")
                 
         except Exception as e:
             raise Exception(f"Failed to download and load blood group model from S3: {e}")
     
     def load_model(self):
-        """Load the blood group classification model with smart caching"""
+        """Load the blood group classification model with smart caching and Railway optimizations"""
         try:
+            # Check load attempts for Railway stability
+            if self._load_attempts >= self._max_load_attempts:
+                logger.error(f"Maximum load attempts ({self._max_load_attempts}) reached for blood group model")
+                self.model = None
+                return
+            
+            self._load_attempts += 1
+            logger.info(f"Blood group model load attempt {self._load_attempts}/{self._max_load_attempts}")
+            
             # First, try to load from local cache
             if os.path.exists(self.model_path):
                 logger.info(f"Loading cached blood group model from: {self.model_path}")
                 self.model = load_model(self.model_path)
+                logger.info("✅ Blood group model loaded from cache successfully")
                 return
             
             # If no local cache, download from S3 and cache it
             logger.info("No local cache found, downloading blood group model from S3...")
             self.model = self.load_model_from_s3_url(self.s3_url, cache_path=self.model_path)
-            logger.info("Blood group model loaded and cached successfully")
+            logger.info("✅ Blood group model loaded and cached successfully")
                         
         except Exception as e:
-            logger.error(f"Error loading blood group model: {e}")
+            logger.error(f"❌ Error loading blood group model (attempt {self._load_attempts}): {e}")
             # Don't raise the exception - just log it and set model to None
             self.model = None
     
     def ensure_model_loaded(self):
-        """Ensure the model is loaded before making predictions"""
-        if self.model is None:
+        """Ensure the model is loaded before making predictions with Railway optimization"""
+        if self.model is None and self._load_attempts < self._max_load_attempts:
             self.load_model()
         if self.model is None:
-            raise ValueError("Blood group classification model is not available")
+            raise ValueError("Blood group classification model is not available after maximum attempts")
     
     def preprocess_fingerprint(self, image_path):
         """

@@ -37,6 +37,50 @@ def ping(request):
     """Simple ping endpoint for basic health check"""
     return {"status": "ok", "message": "Django app is running"}
 
+@api.get("/test-ml/")
+def test_ml_models(request):
+    """Test endpoint to verify ML models are working on Railway"""
+    try:
+        results = {
+            "ml_availability": {
+                "fingerprint": ML_FINGERPRINT_AVAILABLE,
+                "bloodgroup": ML_BLOODGROUP_AVAILABLE,
+                "diabetes": ML_DIABETES_AVAILABLE,
+            },
+            "model_tests": {}
+        }
+        
+        # Test blood group model loading
+        if ML_BLOODGROUP_AVAILABLE:
+            try:
+                from .bloodgroup_classifier import BloodGroupClassifier
+                classifier = BloodGroupClassifier()
+                classifier.load_model()
+                if classifier.model is not None:
+                    results["model_tests"]["bloodgroup"] = {
+                        "status": "loaded",
+                        "input_shape": str(classifier.model.input_shape),
+                        "output_shape": str(classifier.model.output_shape)
+                    }
+                else:
+                    results["model_tests"]["bloodgroup"] = {"status": "failed_to_load"}
+            except Exception as e:
+                results["model_tests"]["bloodgroup"] = {"status": "error", "error": str(e)}
+        
+        # Test diabetes model
+        if ML_DIABETES_AVAILABLE:
+            try:
+                from .diabetes_predictor import DiabetesPredictor
+                predictor = DiabetesPredictor()
+                results["model_tests"]["diabetes"] = {"status": "loaded"}
+            except Exception as e:
+                results["model_tests"]["diabetes"] = {"status": "error", "error": str(e)}
+        
+        return results
+        
+    except Exception as e:
+        return {"error": str(e)}
+
 @api.get("/health/")
 def health_check(request):
     """
