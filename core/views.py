@@ -100,7 +100,7 @@ def identify_blood_group_from_participant(request, participant_id: int = Query(.
         predicted_blood_group = None
         
         for fp in fingerprints:
-            if fp.image and os.path.exists(fp.image.path):
+            if fp.image:
                 try:
                     if not ML_BLOODGROUP_AVAILABLE:
                         pred = {
@@ -109,11 +109,36 @@ def identify_blood_group_from_participant(request, participant_id: int = Query(.
                             'all_probabilities': {}
                         }
                     else:
-                        pred = classify_blood_group_from_multiple([fp.image.path])
+                        # Handle both local files and S3 storage
+                        try:
+                            # Try to get local path first (for local development)
+                            image_path = fp.image.path
+                            if not os.path.exists(image_path):
+                                raise Exception("Local file not found")
+                            pred = classify_blood_group_from_multiple([image_path])
+                        except (NotImplementedError, Exception):
+                            # S3 storage or file not found locally - download image first
+                            import tempfile
+                            import requests
+                            from django.core.files.storage import default_storage
+                            
+                            # Create temporary file
+                            with tempfile.NamedTemporaryFile(delete=False, suffix='.png') as temp_file:
+                                # Read image from S3 storage
+                                with default_storage.open(fp.image.name, 'rb') as image_file:
+                                    temp_file.write(image_file.read())
+                                temp_file.flush()
+                                
+                                # Now classify using temporary file
+                                pred = classify_blood_group_from_multiple([temp_file.name])
+                                
+                                # Clean up temporary file
+                                os.unlink(temp_file.name)
+                    
                     predicted_blood_group = pred['predicted_blood_group']
                     results.append({
                         "finger": fp.finger,
-                        "filename": os.path.basename(fp.image.path),
+                        "filename": fp.image.name.split('/')[-1] if '/' in fp.image.name else fp.image.name,
                         "predicted_blood_group": pred['predicted_blood_group'],
                         "confidence": pred['confidence'],
                         "all_probabilities": pred.get('all_probabilities'),
@@ -124,7 +149,7 @@ def identify_blood_group_from_participant(request, participant_id: int = Query(.
                     print(error_msg)  # This will show in Railway logs
                     results.append({"finger": fp.finger, "error": str(e)})
             else:
-                results.append({"finger": fp.finger, "error": "Image not found"})
+                results.append({"finger": fp.finger, "error": "No image uploaded"})
 
         return {"participant_id": participant_id, "results": results, "predicted_blood_group": predicted_blood_group}
         
