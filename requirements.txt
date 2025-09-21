@@ -30,3 +30,7 @@ tzdata==2025.2
 numpy==1.26.4
 pandas==2.2.3
 scikit-learn==1.5.2
+
+# Deep Learning for blood group classification
+tensorflow==2.17.0
+opencv-python==4.10.0.84
