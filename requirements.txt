@@ -28,3 +28,5 @@ tzdata==2025.2
 
 # Minimal ML (only what we absolutely need)
 numpy==1.26.4
+pandas==2.2.3
+scikit-learn==1.5.2

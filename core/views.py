@@ -405,7 +405,11 @@ def predict_diabetes(request, participant_id: int = Form(...), consent: bool = F
         if not ML_DIABETES_AVAILABLE:
             return JsonResponse({
                 "error": "Diabetes prediction not available - ML packages not installed",
-                "message": "This feature is disabled in minimal deployment mode"
+                "message": "This feature is disabled in minimal deployment mode",
+                "debug": {
+                    "ml_diabetes_available": ML_DIABETES_AVAILABLE,
+                    "help": "Check /api/core/health/ for detailed ML package status"
+                }
             }, status=503)
             
         # Get participant
