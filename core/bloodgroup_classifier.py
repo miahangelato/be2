@@ -14,7 +14,7 @@ class BloodGroupClassifier:
         self.model = None
         self.model_path = os.path.join(os.path.dirname(__file__), 'bloodgroup_model_20250823-140933.h5')
         self.s3_url = "https://team3thesis.s3.us-east-1.amazonaws.com/models/backend/core%5Cbloodgroup_model_20250823-140933.h5"
-        self.load_model()
+        # Don't load model immediately - load it when needed
         
         # Blood group classes based on the Kaggle dataset
         self.blood_groups = ['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-']
@@ -80,7 +80,15 @@ class BloodGroupClassifier:
                         
         except Exception as e:
             logger.error(f"Error loading blood group model: {e}")
-            raise
+            # Don't raise the exception - just log it and set model to None
+            self.model = None
+    
+    def ensure_model_loaded(self):
+        """Ensure the model is loaded before making predictions"""
+        if self.model is None:
+            self.load_model()
+        if self.model is None:
+            raise ValueError("Blood group classification model is not available")
     
     def preprocess_fingerprint(self, image_path):
         """
@@ -126,8 +134,7 @@ class BloodGroupClassifier:
             }
         """
         try:
-            if self.model is None:
-                raise ValueError("Model not loaded")
+            self.ensure_model_loaded()
             
             # Preprocess the image
             processed_image = self.preprocess_fingerprint(fingerprint_image_path)
