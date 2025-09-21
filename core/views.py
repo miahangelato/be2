@@ -129,73 +129,110 @@ def identify_blood_group_from_participant(request, participant_id: int = Query(.
     Returns a list of predictions, one per fingerprint.
     """
     try:
+        # Check if ML is available
+        if not ML_BLOODGROUP_AVAILABLE:
+            return {
+                "success": False,
+                "participant_id": participant_id,
+                "predicted_blood_group": "ML_UNAVAILABLE",
+                "confidence": 0.0,
+                "results": [],
+                "error": "Machine learning models are not available"
+            }
+        
         # Check if participant exists
         try:
             participant = Participant.objects.get(id=participant_id)
         except Participant.DoesNotExist:
-            return {"error": "Participant not found.", "participant_id": participant_id}
+            return {
+                "success": False,
+                "error": "Participant not found.", 
+                "participant_id": participant_id,
+                "predicted_blood_group": "ERROR",
+                "confidence": 0.0,
+                "results": []
+            }
 
         # Fetch fingerprints
         fingerprints = participant.fingerprints.all()
         if not fingerprints:
-            return {"error": "No fingerprints found.", "participant_id": participant_id}
+            return {
+                "success": False,
+                "error": "No fingerprints found.", 
+                "participant_id": participant_id,
+                "predicted_blood_group": "NO_FINGERPRINTS",
+                "confidence": 0.0,
+                "results": []
+            }
 
         results = []
         predicted_blood_group = None
+        best_confidence = 0.0
         
         for fp in fingerprints:
             if fp.image:
                 try:
-                    if not ML_BLOODGROUP_AVAILABLE:
-                        pred = {
-                            'predicted_blood_group': 'ML_UNAVAILABLE',
-                            'confidence': 0.0,
-                            'all_probabilities': {}
-                        }
-                    else:
-                        # Handle both local files and S3 storage
-                        try:
-                            # Try to get local path first (for local development)
-                            image_path = fp.image.path
-                            if not os.path.exists(image_path):
-                                raise Exception("Local file not found")
-                            pred = classify_blood_group_from_multiple([image_path])
-                        except (NotImplementedError, Exception):
-                            # S3 storage or file not found locally - download image first
-                            import tempfile
-                            import requests
-                            from django.core.files.storage import default_storage
+                    # Handle both local files and S3 storage
+                    try:
+                        # Try to get local path first (for local development)
+                        image_path = fp.image.path
+                        if not os.path.exists(image_path):
+                            raise Exception("Local file not found")
+                        pred = classify_blood_group_from_multiple([image_path])
+                    except (NotImplementedError, Exception):
+                        # S3 storage or file not found locally - download image first
+                        import tempfile
+                        import requests
+                        from django.core.files.storage import default_storage
+                        
+                        # Create temporary file
+                        with tempfile.NamedTemporaryFile(delete=False, suffix='.png') as temp_file:
+                            # Read image from S3 storage
+                            with default_storage.open(fp.image.name, 'rb') as image_file:
+                                temp_file.write(image_file.read())
+                            temp_file.flush()
                             
-                            # Create temporary file
-                            with tempfile.NamedTemporaryFile(delete=False, suffix='.png') as temp_file:
-                                # Read image from S3 storage
-                                with default_storage.open(fp.image.name, 'rb') as image_file:
-                                    temp_file.write(image_file.read())
-                                temp_file.flush()
-                                
-                                # Now classify using temporary file
-                                pred = classify_blood_group_from_multiple([temp_file.name])
-                                
-                                # Clean up temporary file
-                                os.unlink(temp_file.name)
+                            # Now classify using temporary file
+                            pred = classify_blood_group_from_multiple([temp_file.name])
+                            
+                            # Clean up temporary file
+                            os.unlink(temp_file.name)
                     
-                    predicted_blood_group = pred['predicted_blood_group']
+                    current_prediction = pred['predicted_blood_group']
+                    current_confidence = pred['confidence']
+                    
+                    # Update best prediction if this one has higher confidence
+                    if predicted_blood_group is None or current_confidence > best_confidence:
+                        predicted_blood_group = current_prediction
+                        best_confidence = current_confidence
+                    
                     results.append({
                         "finger": fp.finger,
                         "filename": fp.image.name.split('/')[-1] if '/' in fp.image.name else fp.image.name,
-                        "predicted_blood_group": pred['predicted_blood_group'],
-                        "confidence": pred['confidence'],
+                        "predicted_blood_group": current_prediction,
+                        "confidence": current_confidence,
                         "all_probabilities": pred.get('all_probabilities'),
                     })
                 except Exception as e:
                     import traceback
-                    error_msg = f"Blood group prediction error: {str(e)}\n{traceback.format_exc()}"
+                    error_msg = f"Blood group prediction error for {fp.finger}: {str(e)}\n{traceback.format_exc()}"
                     print(error_msg)  # This will show in Railway logs
                     results.append({"finger": fp.finger, "error": str(e)})
             else:
                 results.append({"finger": fp.finger, "error": "No image uploaded"})
 
-        return {"participant_id": participant_id, "results": results, "predicted_blood_group": predicted_blood_group}
+        # If no successful predictions, set fallback
+        if predicted_blood_group is None:
+            predicted_blood_group = "UNKNOWN"
+            best_confidence = 0.0
+
+        return {
+            "success": True,
+            "participant_id": participant_id, 
+            "results": results, 
+            "predicted_blood_group": predicted_blood_group,
+            "confidence": best_confidence
+        }
         
     except Exception as e:
         import traceback
@@ -215,42 +252,86 @@ def identify_blood_group_from_json(request, json: str = Form(...), files: list[U
     import tempfile, shutil
     results = []
     temp_paths = []
+    predicted_blood_group = None  # Initialize outside the loop
+    
     try:
+        if not ML_BLOODGROUP_AVAILABLE:
+            return {
+                "success": False,
+                "predicted_blood_group": "ML_UNAVAILABLE",
+                "confidence": 0.0,
+                "results": [],
+                "error": "Machine learning models are not available"
+            }
+            
         data = pyjson.loads(json)
         fingerprints_meta = data.get('fingerprints', [])
+        
         # Map image_name to file
         file_map = {f.name: f for f in files}
+        
         for fp_meta in fingerprints_meta:
             img_name = fp_meta.get('image_name')
             f = file_map.get(img_name)
             if not f:
                 results.append({"image_name": img_name, "error": "No file uploaded for this fingerprint"})
                 continue
+                
             temp_fd, temp_path = tempfile.mkstemp(suffix='.png')
             os.close(temp_fd)
+            
             with open(temp_path, 'wb') as out:
                 f.file.seek(0)
                 shutil.copyfileobj(f.file, out)
             temp_paths.append(temp_path)
+            
             try:
                 pred = classify_blood_group_from_multiple([temp_path])
-                predicted_blood_group = pred['predicted_blood_group']
+                current_prediction = pred['predicted_blood_group']
+                
+                # Update the best prediction if this one has higher confidence
+                if predicted_blood_group is None or pred['confidence'] > results[-1]['confidence'] if results else 0:
+                    predicted_blood_group = current_prediction
+                
                 results.append({
                     "finger": fp_meta.get('finger'),
                     "image_name": img_name,
-                    "predicted_blood_group": pred['predicted_blood_group'],
+                    "predicted_blood_group": current_prediction,
                     "confidence": pred['confidence'],
                     "all_probabilities": pred.get('all_probabilities'),
                 })
             except Exception as e:
+                import traceback
+                error_msg = f"Error processing {img_name}: {str(e)}\n{traceback.format_exc()}"
+                print(error_msg)  # This will show in Railway logs
                 results.append({
                     "finger": fp_meta.get('finger'),
                     "image_name": img_name,
                     "error": str(e)
                 })
-        return {"success": True, "results": results, "predicted_blood_group": predicted_blood_group}
+        
+        # If no successful predictions, set a fallback
+        if predicted_blood_group is None:
+            predicted_blood_group = "UNKNOWN"
+            
+        return {
+            "success": True, 
+            "results": results, 
+            "predicted_blood_group": predicted_blood_group,
+            "confidence": max([r.get('confidence', 0) for r in results if 'confidence' in r], default=0)
+        }
+        
     except Exception as e:
-        return {"success": False, "error": f"Blood group identification failed: {e}"}
+        import traceback
+        error_msg = f"Blood group identification failed: {str(e)}\n{traceback.format_exc()}"
+        print(error_msg)  # This will show in Railway logs
+        return {
+            "success": False, 
+            "error": error_msg,
+            "predicted_blood_group": "ERROR",
+            "confidence": 0.0,
+            "results": []
+        }
     finally:
         for p in temp_paths:
             try:
