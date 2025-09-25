@@ -887,6 +887,7 @@ def generate_pdf_token(request, participant_id: int = Form(...)):
         
         # Generate unique token
         token = str(uuid.uuid4())
+        print(f"🔑 Generated token: {token}")
         
         # Store data temporarily (10 minutes)
         pdf_data = {
@@ -906,13 +907,27 @@ def generate_pdf_token(request, participant_id: int = Form(...)):
             'generated_at': datetime.now().isoformat()
         }
         
-        cache.set(f"pdf_data_{token}", pdf_data, timeout=600)  # 10 minutes
+        cache_key = f"pdf_data_{token}"
+        print(f"💾 Storing data in cache with key: {cache_key}")
+        print(f"💾 Data to store: {pdf_data}")
+        
+        cache.set(cache_key, pdf_data, timeout=600)  # 10 minutes
+        
+        # Verify it was stored
+        stored_data = cache.get(cache_key)
+        if stored_data:
+            print(f"✅ Data successfully stored in cache")
+        else:
+            print(f"❌ Failed to store data in cache")
+        
+        download_url = f"/api/core/download-pdf/{token}/"
+        print(f"🔗 Generated download URL: {download_url}")
         
         return {
             "success": True,
             "download_token": token,
             "expires_in": 600,
-            "download_url": f"/api/core/download-pdf/{token}/"
+            "download_url": download_url
         }
         
     except Participant.DoesNotExist:
@@ -920,38 +935,154 @@ def generate_pdf_token(request, participant_id: int = Form(...)):
     except Exception as e:
         return {"success": False, "error": f"Failed to generate PDF token: {str(e)}"}
 
+@api.get("/test-cache/")
+def test_cache(request):
+    """Test if cache is working"""
+    try:
+        test_key = "test_cache_key"
+        test_value = {"test": "data", "timestamp": datetime.now().isoformat()}
+        
+        # Set cache
+        cache.set(test_key, test_value, timeout=60)
+        
+        # Get cache
+        retrieved_value = cache.get(test_key)
+        
+        return {
+            "success": True,
+            "cache_working": retrieved_value is not None,
+            "stored_value": test_value,
+            "retrieved_value": retrieved_value
+        }
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
 @api.get("/download-pdf/{token}/")
 def download_pdf(request, token: str):
     """Download PDF using temporary token"""
     try:
+        print(f"🔍 PDF download request for token: {token}")
+        
         # Get data from cache
-        pdf_data = cache.get(f"pdf_data_{token}")
+        cache_key = f"pdf_data_{token}"
+        print(f"🔍 Looking for cache key: {cache_key}")
+        
+        pdf_data = cache.get(cache_key)
         if not pdf_data:
+            print(f"❌ No data found in cache for token: {token}")
+            # Let's check what keys exist in cache
+            try:
+                from django.core.cache import cache as django_cache
+                print(f"🔍 Cache backend: {type(django_cache)}")
+            except:
+                pass
             raise Http404("Download link has expired or is invalid")
         
+        print(f"✅ Found PDF data in cache: {pdf_data}")
+        
         # Generate PDF
-        pdf_buffer = generate_health_report_pdf(pdf_data)
+        print("📄 Generating PDF...")
+        try:
+            pdf_buffer = generate_health_report_pdf(pdf_data)
+            print("✅ PDF generated successfully")
+        except Exception as pdf_error:
+            print(f"❌ PDF generation error: {pdf_error}")
+            # Try simple text-based PDF as fallback
+            pdf_buffer = generate_simple_text_pdf(pdf_data)
+            print("✅ Simple PDF generated as fallback")
         
         # Delete from cache (one-time use)
-        cache.delete(f"pdf_data_{token}")
+        cache.delete(cache_key)
+        print(f"🗑️ Deleted cache key: {cache_key}")
         
-        # Return PDF file
-        response = FileResponse(
-            pdf_buffer,
-            as_attachment=True,
-            filename=f"printalyzer_health_report_{token[:8]}.pdf",
-            content_type='application/pdf'
-        )
+        # Return file (PDF or text)
+        try:
+            # Try to determine if it's a PDF or text
+            pdf_buffer.seek(0)
+            first_bytes = pdf_buffer.read(4)
+            pdf_buffer.seek(0)
+            
+            if first_bytes == b'%PDF':
+                # It's a PDF
+                response = FileResponse(
+                    pdf_buffer,
+                    as_attachment=True,
+                    filename=f"printalyzer_health_report_{token[:8]}.pdf",
+                    content_type='application/pdf'
+                )
+            else:
+                # It's text - serve as plain text
+                from django.http import HttpResponse
+                content = pdf_buffer.read().decode('utf-8')
+                response = HttpResponse(
+                    content,
+                    content_type='text/plain',
+                    headers={
+                        'Content-Disposition': f'attachment; filename="printalyzer_health_report_{token[:8]}.txt"'
+                    }
+                )
+        except:
+            # Fallback to serving as-is
+            response = FileResponse(
+                pdf_buffer,
+                as_attachment=True,
+                filename=f"printalyzer_health_report_{token[:8]}.pdf",
+                content_type='application/pdf'
+            )
         
         # Add CORS headers for mobile browsers
         response['Access-Control-Allow-Origin'] = '*'
         response['Access-Control-Allow-Methods'] = 'GET'
         response['Access-Control-Allow-Headers'] = 'Content-Type'
         
+        print("✅ Returning PDF response")
         return response
         
     except Exception as e:
+        print(f"❌ PDF download error: {str(e)}")
+        print(f"❌ Exception type: {type(e)}")
+        import traceback
+        print(f"❌ Traceback: {traceback.format_exc()}")
         raise Http404(f"Download failed: {str(e)}")
+
+def generate_simple_text_pdf(pdf_data):
+    """Generate a simple text-based PDF as fallback"""
+    import io
+    
+    # Create a simple text content
+    content = f"""
+PRINTALYZER HEALTH REPORT
+========================
+
+Patient Information:
+- Age: {pdf_data['participant']['age']} years
+- Gender: {pdf_data['participant']['gender']}
+- Height: {pdf_data['participant']['height']} cm
+- Weight: {pdf_data['participant']['weight']} kg
+- Blood Type: {pdf_data['participant'].get('blood_type', 'Not specified')}
+- Willing to Donate: {'Yes' if pdf_data['participant']['willing_to_donate'] else 'No'}
+
+Blood Group Prediction:
+- Predicted: {pdf_data.get('blood_group_result', {}).get('predicted_blood_group', 'Unknown')}
+- Confidence: {pdf_data.get('blood_group_result', {}).get('confidence', 0) * 100:.1f}%
+
+Diabetes Risk Assessment:
+- Risk Level: {pdf_data.get('diabetes_result', {}).get('risk', 'Unknown')}
+- Confidence: {pdf_data.get('diabetes_result', {}).get('confidence', 0) * 100:.1f}%
+
+IMPORTANT DISCLAIMER:
+This is a screening tool for educational purposes only.
+Consult healthcare professionals for medical advice.
+
+Generated: {pdf_data.get('generated_at', 'Unknown')}
+"""
+    
+    # For now, return as plain text in a buffer
+    # In production, you might want to use a simple PDF library
+    buffer = io.BytesIO()
+    buffer.write(content.encode('utf-8'))
+    buffer.seek(0)
+    return buffer
 
 def generate_health_report_pdf(pdf_data):
     """Generate a styled PDF health report using ReportLab"""
