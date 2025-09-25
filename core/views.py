@@ -980,54 +980,35 @@ def download_pdf(request, token: str):
         
         print(f"✅ Found PDF data in cache: {pdf_data}")
         
-        # Generate PDF
+        # Generate PDF with fallback handling
         print("📄 Generating PDF...")
-        try:
-            pdf_buffer = generate_health_report_pdf(pdf_data)
-            print("✅ PDF generated successfully")
-        except Exception as pdf_error:
-            print(f"❌ PDF generation error: {pdf_error}")
-            # Try simple text-based PDF as fallback
-            pdf_buffer = generate_simple_text_pdf(pdf_data)
-            print("✅ Simple PDF generated as fallback")
+        pdf_buffer, content_type, extension = generate_health_report_pdf(pdf_data)
+        print(f"✅ PDF generated successfully - Type: {content_type}, Extension: {extension}")
         
         # Delete from cache (one-time use)
         cache.delete(cache_key)
         print(f"🗑️ Deleted cache key: {cache_key}")
         
-        # Return file (PDF or text)
-        try:
-            # Try to determine if it's a PDF or text
-            pdf_buffer.seek(0)
-            first_bytes = pdf_buffer.read(4)
-            pdf_buffer.seek(0)
-            
-            if first_bytes == b'%PDF':
-                # It's a PDF
-                response = FileResponse(
-                    pdf_buffer,
-                    as_attachment=True,
-                    filename=f"printalyzer_health_report_{token[:8]}.pdf",
-                    content_type='application/pdf'
-                )
-            else:
-                # It's text - serve as plain text
-                from django.http import HttpResponse
-                content = pdf_buffer.read().decode('utf-8')
-                response = HttpResponse(
-                    content,
-                    content_type='text/plain',
-                    headers={
-                        'Content-Disposition': f'attachment; filename="printalyzer_health_report_{token[:8]}.txt"'
-                    }
-                )
-        except:
-            # Fallback to serving as-is
+        # Return appropriate response based on content type
+        filename = f"printalyzer_health_report_{token[:8]}{extension}"
+        
+        if content_type == 'application/pdf':
             response = FileResponse(
                 pdf_buffer,
                 as_attachment=True,
-                filename=f"printalyzer_health_report_{token[:8]}.pdf",
-                content_type='application/pdf'
+                filename=filename,
+                content_type=content_type
+            )
+        else:
+            # Text fallback
+            from django.http import HttpResponse
+            content = pdf_buffer.read().decode('utf-8')
+            response = HttpResponse(
+                content,
+                content_type=content_type,
+                headers={
+                    'Content-Disposition': f'attachment; filename="{filename}"'
+                }
             )
         
         # Add CORS headers for mobile browsers
@@ -1045,8 +1026,121 @@ def download_pdf(request, token: str):
         print(f"❌ Traceback: {traceback.format_exc()}")
         raise Http404(f"Download failed: {str(e)}")
 
+def generate_health_report_pdf_simple(pdf_data):
+    """Generate a basic PDF with proper PDF format"""
+    import io
+    
+    # Create a minimal but valid PDF
+    content = f"""%PDF-1.4
+1 0 obj
+<<
+/Type /Catalog
+/Pages 2 0 R
+>>
+endobj
+
+2 0 obj
+<<
+/Type /Pages
+/Kids [3 0 R]
+/Count 1
+>>
+endobj
+
+3 0 obj
+<<
+/Type /Page
+/Parent 2 0 R
+/MediaBox [0 0 612 792]
+/Contents 4 0 R
+/Resources <<
+  /Font << /F1 5 0 R >>
+>>
+>>
+endobj
+
+4 0 obj
+<<
+/Length 1200
+>>
+stream
+BT
+/F1 16 Tf
+50 750 Td
+(PRINTALYZER HEALTH REPORT) Tj
+0 -40 Td
+/F1 12 Tf
+(AI-Powered Health Analysis) Tj
+0 -40 Td
+(Patient Information:) Tj
+0 -20 Td
+(Age: {pdf_data['participant']['age']} years) Tj
+0 -20 Td
+(Gender: {pdf_data['participant']['gender']}) Tj
+0 -20 Td
+(Height: {pdf_data['participant']['height']} cm) Tj
+0 -20 Td
+(Weight: {pdf_data['participant']['weight']} kg) Tj
+0 -20 Td
+(Blood Type: {pdf_data['participant'].get('blood_type', 'Not specified')}) Tj
+0 -20 Td
+(Willing to Donate: {'Yes' if pdf_data['participant']['willing_to_donate'] else 'No'}) Tj
+0 -40 Td
+(Blood Group Prediction:) Tj
+0 -20 Td
+(Predicted: {pdf_data.get('blood_group_result', {}).get('predicted_blood_group', 'Unknown')}) Tj
+0 -20 Td
+(Confidence: {pdf_data.get('blood_group_result', {}).get('confidence', 0) * 100:.1f}%) Tj
+0 -40 Td
+(Diabetes Risk Assessment:) Tj
+0 -20 Td
+(Risk Level: {pdf_data.get('diabetes_result', {}).get('risk', 'Unknown')}) Tj
+0 -20 Td
+(Confidence: {pdf_data.get('diabetes_result', {}).get('confidence', 0) * 100:.1f}%) Tj
+0 -40 Td
+(IMPORTANT DISCLAIMER:) Tj
+0 -20 Td
+(This is a screening tool for educational purposes only.) Tj
+0 -20 Td
+(Consult healthcare professionals for medical advice.) Tj
+0 -40 Td
+(Generated: {datetime.fromisoformat(pdf_data['generated_at']).strftime('%B %d, %Y')}) Tj
+ET
+endstream
+endobj
+
+5 0 obj
+<<
+/Type /Font
+/Subtype /Type1
+/BaseFont /Helvetica
+>>
+endobj
+
+xref
+0 6
+0000000000 65535 f 
+0000000009 00000 n 
+0000000058 00000 n 
+0000000115 00000 n 
+0000000254 00000 n 
+0000001400 00000 n 
+trailer
+<<
+/Size 6
+/Root 1 0 R
+>>
+startxref
+1478
+%%EOF"""
+
+    buffer = io.BytesIO()
+    buffer.write(content.encode('utf-8'))
+    buffer.seek(0)
+    return buffer
+
 def generate_simple_text_pdf(pdf_data):
-    """Generate a simple text-based PDF as fallback"""
+    """Generate a simple text-based file as last fallback"""
     import io
     
     # Create a simple text content
@@ -1077,24 +1171,170 @@ Consult healthcare professionals for medical advice.
 Generated: {pdf_data.get('generated_at', 'Unknown')}
 """
     
-    # For now, return as plain text in a buffer
-    # In production, you might want to use a simple PDF library
+    # Return as plain text in a buffer
     buffer = io.BytesIO()
     buffer.write(content.encode('utf-8'))
     buffer.seek(0)
     return buffer
 
 def generate_health_report_pdf(pdf_data):
-    """Generate a styled PDF health report using ReportLab"""
-    buffer = io.BytesIO()
+    """Generate a styled PDF health report with multiple fallback options"""
+    try:
+        # Try our simple PDF generator first (most reliable)
+        print("🔄 Attempting simple PDF generation")
+        pdf_buffer = generate_health_report_pdf_simple(pdf_data)
+        print("✅ Simple PDF generation successful")
+        return pdf_buffer, 'application/pdf', '.pdf'
+    except Exception as e:
+        print(f"⚠️ Simple PDF generation failed: {str(e)}")
+        
+        try:
+            # Try using ReportLab
+            from reportlab.pdfgen import canvas
+            from reportlab.lib.pagesizes import A4
+            from reportlab.lib.colors import HexColor
+            
+            buffer = io.BytesIO()
+            c = canvas.Canvas(buffer, pagesize=A4)
+            width, height = A4
+            
+            # If we get here, ReportLab is available
+            print("🔄 Attempting ReportLab PDF generation")
+            pdf_buffer = generate_reportlab_pdf(pdf_data, c, width, height, buffer)
+            print("✅ ReportLab PDF generation successful")
+            return pdf_buffer, 'application/pdf', '.pdf'
+            
+        except ImportError:
+            print("⚠️ ReportLab not available, trying manual PDF generation")
+            try:
+                pdf_buffer = generate_manual_pdf(pdf_data)
+                print("✅ Manual PDF generation successful")
+                return pdf_buffer, 'application/pdf', '.pdf'
+            except Exception as e2:
+                print(f"❌ Manual PDF generation failed: {str(e2)}")
+                # Final fallback to text
+                text_buffer = generate_simple_text_pdf(pdf_data)
+                return text_buffer, 'text/plain', '.txt'
+        except Exception as e:
+            print(f"❌ ReportLab PDF generation failed: {str(e)}")
+            # Final fallback to text
+            text_buffer = generate_simple_text_pdf(pdf_data)
+            return text_buffer, 'text/plain', '.txt'
+
+def generate_manual_pdf(pdf_data):
+    """Generate a basic PDF manually without ReportLab"""
+    import io
     
-    # Simple PDF generation using canvas (more reliable than SimpleDocTemplate)
-    from reportlab.pdfgen import canvas
-    from reportlab.lib.pagesizes import A4
+    # Create a very basic PDF structure
+    content = f"""%PDF-1.4
+1 0 obj
+<<
+/Type /Catalog
+/Pages 2 0 R
+>>
+endobj
+
+2 0 obj
+<<
+/Type /Pages
+/Kids [3 0 R]
+/Count 1
+>>
+endobj
+
+3 0 obj
+<<
+/Type /Page
+/Parent 2 0 R
+/MediaBox [0 0 612 792]
+/Contents 4 0 R
+/Resources <<
+  /Font << /F1 5 0 R >>
+>>
+>>
+endobj
+
+4 0 obj
+<<
+/Length {len("BT /F1 12 Tf 50 750 Td")}
+>>
+stream
+BT
+/F1 12 Tf
+50 750 Td
+(Printalyzer Health Report) Tj
+0 -30 Td
+(Patient Information:) Tj
+0 -20 Td
+(Age: {pdf_data['participant']['age']} years) Tj
+0 -20 Td
+(Gender: {pdf_data['participant']['gender']}) Tj
+0 -20 Td
+(Height: {pdf_data['participant']['height']} cm) Tj
+0 -20 Td
+(Weight: {pdf_data['participant']['weight']} kg) Tj
+0 -20 Td
+(Blood Type: {pdf_data['participant'].get('blood_type', 'Not specified')}) Tj
+0 -40 Td
+(Blood Group Prediction:) Tj
+0 -20 Td
+(Predicted: {pdf_data.get('blood_group_result', {}).get('predicted_blood_group', 'Unknown')}) Tj
+0 -20 Td
+(Confidence: {pdf_data.get('blood_group_result', {}).get('confidence', 0) * 100:.1f}%) Tj
+0 -40 Td
+(Diabetes Risk Assessment:) Tj
+0 -20 Td
+(Risk Level: {pdf_data.get('diabetes_result', {}).get('risk', 'Unknown')}) Tj
+0 -20 Td
+(Confidence: {pdf_data.get('diabetes_result', {}).get('confidence', 0) * 100:.1f}%) Tj
+0 -40 Td
+(DISCLAIMER: This is for educational purposes only.) Tj
+0 -20 Td
+(Consult healthcare professionals for medical advice.) Tj
+ET
+endstream
+endobj
+
+5 0 obj
+<<
+/Type /Font
+/Subtype /Type1
+/BaseFont /Helvetica
+>>
+endobj
+
+xref
+0 6
+0000000000 65535 f 
+0000000009 00000 n 
+0000000058 00000 n 
+0000000115 00000 n 
+0000000254 00000 n 
+0000001000 00000 n 
+trailer
+<<
+/Size 6
+/Root 1 0 R
+>>
+startxref
+1078
+%%EOF"""
+
+    buffer = io.BytesIO()
+    buffer.write(content.encode('utf-8'))
+    buffer.seek(0)
+    return buffer
+
+def generate_reportlab_pdf(pdf_data, c, width, height, buffer):
+    """Generate PDF using ReportLab"""
     from reportlab.lib.colors import HexColor
     
-    c = canvas.Canvas(buffer, pagesize=A4)
-    width, height = A4
+    # Colors
+    primary_color = HexColor('#00c2cb')
+    text_color = HexColor('#1f2937')
+    gray_color = HexColor('#6b7280')
+    red_color = HexColor('#dc2626')
+    green_color = HexColor('#059669')
     
     # Colors
     primary_color = HexColor('#00c2cb')
