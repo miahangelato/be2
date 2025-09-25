@@ -325,7 +325,7 @@ def predict_diabetes_from_json(request):
             return {"success": False, "error": "Model not loaded"}
         
         pred = model.predict(df)[0]
-        risk = 'DIABETIC' if str(pred).lower() in ['diabetic', '1', 'at risk', 'risk', 'positive'] else 'HEALTHY'
+        risk = 'At risk' if str(pred).lower() in ['diabetic', '1', 'at risk', 'risk', 'positive'] else 'Not at risk'
         
         return {
             "success": True,

@@ -717,7 +717,7 @@ def predict_diabetes_from_json(request):
             return {"success": False, "error": "Model not loaded"}
         
         pred = model.predict(df)[0]
-        risk = 'DIABETIC' if str(pred).lower() in ['diabetic', '1', 'at risk', 'risk', 'positive'] else 'HEALTHY'
+        risk = 'At risk' if str(pred).lower() in ['diabetic', '1', 'at risk', 'risk', 'positive'] else 'Not at risk'
         
         return {
             "success": True,
@@ -972,7 +972,7 @@ def test_pdf_generation(request):
                 'willing_to_donate': True
             },
             'diabetes_result': {
-                'risk': 'HEALTHY',
+                'risk': 'Not at risk',
                 'confidence': 0.95
             },
             'blood_group_result': {
@@ -1045,9 +1045,9 @@ def download_pdf(request, token: str):
         pdf_buffer, content_type, extension = generate_health_report_pdf(pdf_data)
         print(f"✅ PDF generated successfully - Type: {content_type}, Extension: {extension}")
         
-        # Delete from cache (one-time use)
-        cache.delete(cache_key)
-        print(f"🗑️ Deleted cache key: {cache_key}")
+        # Don't delete immediately - allow multiple downloads within time limit
+        # The cache will expire naturally after 10 minutes
+        print(f"� PDF downloaded successfully, keeping cache entry until expiry")
         
         # Return appropriate response based on content type
         filename = f"printalyzer_health_report_{token[:8]}{extension}"

@@ -161,9 +161,9 @@ class DiabetesPredictor:
             df = self.prepare_input_df(participant_data, model_key)
             pred = model.predict(df)[0]
             if str(pred).lower() in ['diabetic', '1', 'at risk', 'risk', 'positive']:
-                risk = 'DIABETIC'
+                risk = 'At risk'
             else:
-                risk = 'HEALTHY'
+                risk = 'Not at risk'
             return {
                 'risk': risk,
                 'confidence': 1.0,
