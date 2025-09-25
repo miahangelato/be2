@@ -776,6 +776,63 @@ from reportlab.lib import colors
 import io
 from datetime import datetime
 
+@api.post("/generate-pdf-token-direct/")
+def generate_pdf_token_direct(request):
+    """Generate a temporary token for PDF download using provided data (no database storage required)"""
+    try:
+        # Parse JSON data from request body
+        import json
+        data = json.loads(request.body)
+        
+        participant_data = data.get('participant_data', {})
+        diabetes_result = data.get('diabetes_result', {})
+        blood_group_result = data.get('blood_group_result', {})
+        
+        # Validate required data
+        if not participant_data:
+            return {"success": False, "error": "Participant data is required"}
+        
+        # Generate unique token
+        token = str(uuid.uuid4())
+        
+        # Store data temporarily (10 minutes)
+        pdf_data = {
+            'participant': {
+                'id': None,  # No database ID since not saved
+                'age': participant_data.get('age'),
+                'gender': participant_data.get('gender'),
+                'height': participant_data.get('height'),
+                'weight': participant_data.get('weight'),
+                'blood_type': participant_data.get('blood_type'),
+                'willing_to_donate': participant_data.get('willing_to_donate'),
+                'created_at': datetime.now().isoformat()
+            },
+            'diabetes_result': {
+                'risk': diabetes_result.get('diabetes_risk') or diabetes_result.get('risk'),
+                'confidence': diabetes_result.get('confidence', 0)
+            },
+            'blood_group_result': {
+                'predicted_blood_group': blood_group_result.get('predicted_blood_group'),
+                'confidence': blood_group_result.get('confidence', 0)
+            },
+            'fingerprint_count': len(data.get('fingerprints', [])),
+            'generated_at': datetime.now().isoformat()
+        }
+        
+        cache.set(f"pdf_data_{token}", pdf_data, timeout=600)  # 10 minutes
+        
+        return {
+            "success": True,
+            "download_token": token,
+            "expires_in": 600,
+            "download_url": f"/api/core/download-pdf/{token}/"
+        }
+        
+    except json.JSONDecodeError:
+        return {"success": False, "error": "Invalid JSON data"}
+    except Exception as e:
+        return {"success": False, "error": f"Failed to generate PDF token: {str(e)}"}
+
 @api.post("/generate-pdf-token/")
 def generate_pdf_token(request, participant_id: int = Form(...)):
     """Generate a temporary token for PDF download without saving PDF to database"""
