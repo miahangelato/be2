@@ -761,3 +761,274 @@ def encrypt_data(request, data: str):
     except Exception as e:
         return JsonResponse({"success": False, "error": str(e)})
 
+# QR Code PDF Download Implementation
+import uuid
+from django.core.cache import cache
+from django.http import FileResponse, Http404
+import tempfile
+from reportlab.lib.pagesizes import letter, A4
+from reportlab.pdfgen import canvas
+from reportlab.lib.colors import HexColor
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
+from reportlab.lib.units import inch
+from reportlab.lib import colors
+import io
+from datetime import datetime
+
+@api.post("/generate-pdf-token/")
+def generate_pdf_token(request, participant_id: int = Form(...)):
+    """Generate a temporary token for PDF download without saving PDF to database"""
+    try:
+        # Get participant data
+        participant = Participant.objects.get(id=participant_id)
+        
+        # Get results data
+        diabetes_result = None
+        blood_group_result = None
+        
+        try:
+            # Try to get saved results first
+            result = Result.objects.filter(participant=participant).first()
+            if result:
+                diabetes_result = {
+                    'risk': result.diabetes_risk,
+                    'confidence': result.confidence_score
+                }
+        except:
+            pass
+        
+        # Generate blood group prediction if not available
+        if not blood_group_result:
+            try:
+                bg_response = identify_blood_group_from_participant(request, participant_id)
+                if bg_response.get('success'):
+                    blood_group_result = {
+                        'predicted_blood_group': bg_response.get('predicted_blood_group'),
+                        'confidence': bg_response.get('confidence', 0)
+                    }
+            except:
+                blood_group_result = {
+                    'predicted_blood_group': 'Unknown',
+                    'confidence': 0
+                }
+        
+        # Generate diabetes prediction if not available
+        if not diabetes_result:
+            try:
+                diabetes_response = predict_diabetes(request, participant_id, consent=False)
+                if diabetes_response.get('success'):
+                    diabetes_result = {
+                        'risk': diabetes_response.get('diabetes_risk'),
+                        'confidence': diabetes_response.get('confidence', 0)
+                    }
+            except:
+                diabetes_result = {
+                    'risk': 'Unknown',
+                    'confidence': 0
+                }
+        
+        # Generate unique token
+        token = str(uuid.uuid4())
+        
+        # Store data temporarily (10 minutes)
+        pdf_data = {
+            'participant': {
+                'id': participant.id,
+                'age': participant.age,
+                'gender': participant.gender,
+                'height': participant.height,
+                'weight': participant.weight,
+                'blood_type': participant.blood_type,
+                'willing_to_donate': participant.willing_to_donate,
+                'created_at': participant.created_at.isoformat() if participant.created_at else None
+            },
+            'diabetes_result': diabetes_result,
+            'blood_group_result': blood_group_result,
+            'fingerprint_count': participant.fingerprints.count(),
+            'generated_at': datetime.now().isoformat()
+        }
+        
+        cache.set(f"pdf_data_{token}", pdf_data, timeout=600)  # 10 minutes
+        
+        return {
+            "success": True,
+            "download_token": token,
+            "expires_in": 600,
+            "download_url": f"/api/core/download-pdf/{token}/"
+        }
+        
+    except Participant.DoesNotExist:
+        return {"success": False, "error": "Participant not found"}
+    except Exception as e:
+        return {"success": False, "error": f"Failed to generate PDF token: {str(e)}"}
+
+@api.get("/download-pdf/{token}/")
+def download_pdf(request, token: str):
+    """Download PDF using temporary token"""
+    try:
+        # Get data from cache
+        pdf_data = cache.get(f"pdf_data_{token}")
+        if not pdf_data:
+            raise Http404("Download link has expired or is invalid")
+        
+        # Generate PDF
+        pdf_buffer = generate_health_report_pdf(pdf_data)
+        
+        # Delete from cache (one-time use)
+        cache.delete(f"pdf_data_{token}")
+        
+        # Return PDF file
+        response = FileResponse(
+            pdf_buffer,
+            as_attachment=True,
+            filename=f"printalyzer_health_report_{token[:8]}.pdf",
+            content_type='application/pdf'
+        )
+        
+        # Add CORS headers for mobile browsers
+        response['Access-Control-Allow-Origin'] = '*'
+        response['Access-Control-Allow-Methods'] = 'GET'
+        response['Access-Control-Allow-Headers'] = 'Content-Type'
+        
+        return response
+        
+    except Exception as e:
+        raise Http404(f"Download failed: {str(e)}")
+
+def generate_health_report_pdf(pdf_data):
+    """Generate a styled PDF health report using ReportLab"""
+    buffer = io.BytesIO()
+    
+    # Simple PDF generation using canvas (more reliable than SimpleDocTemplate)
+    from reportlab.pdfgen import canvas
+    from reportlab.lib.pagesizes import A4
+    from reportlab.lib.colors import HexColor
+    
+    c = canvas.Canvas(buffer, pagesize=A4)
+    width, height = A4
+    
+    # Colors
+    primary_color = HexColor('#00c2cb')
+    text_color = HexColor('#1f2937')
+    gray_color = HexColor('#6b7280')
+    red_color = HexColor('#dc2626')
+    green_color = HexColor('#059669')
+    
+    # Header
+    c.setFont("Helvetica-Bold", 24)
+    c.setFillColor(primary_color)
+    c.drawCentredText(width/2, height-80, "🔬 Printalyzer Health Report")
+    
+    c.setFont("Helvetica", 14)
+    c.setFillColor(text_color)
+    c.drawCentredText(width/2, height-110, "AI-Powered Diabetes Risk & Blood Group Analysis")
+    
+    # Generation date
+    gen_date = datetime.fromisoformat(pdf_data['generated_at']).strftime('%B %d, %Y at %I:%M %p')
+    c.setFont("Helvetica", 10)
+    c.setFillColor(gray_color)
+    c.drawCentredText(width/2, height-130, f"Generated: {gen_date}")
+    
+    # Patient Information Section
+    y = height - 180
+    c.setFont("Helvetica-Bold", 16)
+    c.setFillColor(text_color)
+    c.drawString(50, y, "👤 Patient Information")
+    
+    y -= 30
+    c.setFont("Helvetica", 11)
+    patient_info = [
+        f"Age: {pdf_data['participant']['age']} years",
+        f"Gender: {pdf_data['participant']['gender']}",
+        f"Height: {pdf_data['participant']['height']} cm",
+        f"Weight: {pdf_data['participant']['weight']} kg",
+        f"Actual Blood Type: {pdf_data['participant'].get('blood_type', 'Not specified')}",
+        f"Willing to Donate: {'Yes' if pdf_data['participant']['willing_to_donate'] else 'No'}"
+    ]
+    
+    for info in patient_info:
+        c.drawString(70, y, info)
+        y -= 18
+    
+    # Blood Group Results
+    y -= 30
+    c.setFont("Helvetica-Bold", 14)
+    c.setFillColor(red_color)
+    c.drawString(50, y, "🩸 Blood Group Prediction")
+    
+    y -= 25
+    c.setFont("Helvetica", 11)
+    c.setFillColor(text_color)
+    bg_result = pdf_data.get('blood_group_result', {})
+    bg_confidence = bg_result.get('confidence', 0) * 100
+    
+    bg_info = [
+        f"Predicted Blood Group: {bg_result.get('predicted_blood_group', 'Unknown')}",
+        f"Confidence Level: {bg_confidence:.1f}%",
+        f"Analysis Method: Dermatoglyphic Pattern Recognition"
+    ]
+    
+    for info in bg_info:
+        c.drawString(70, y, info)
+        y -= 18
+    
+    # Diabetes Risk Results
+    y -= 30
+    c.setFont("Helvetica-Bold", 14)
+    c.setFillColor(green_color)
+    c.drawString(50, y, "🏥 Diabetes Risk Assessment")
+    
+    y -= 25
+    c.setFont("Helvetica", 11)
+    c.setFillColor(text_color)
+    diabetes_result = pdf_data.get('diabetes_result', {})
+    diabetes_confidence = diabetes_result.get('confidence', 0) * 100
+    risk_level = diabetes_result.get('risk', 'Unknown')
+    
+    diabetes_info = [
+        f"Risk Assessment: {risk_level}",
+        f"Confidence Level: {diabetes_confidence:.1f}%",
+        f"Analysis Method: Machine Learning Algorithm",
+        f"Fingerprints Analyzed: {pdf_data.get('fingerprint_count', 0)}"
+    ]
+    
+    for info in diabetes_info:
+        c.drawString(70, y, info)
+        y -= 18
+    
+    # Medical Disclaimer
+    y -= 40
+    c.setFont("Helvetica-Bold", 12)
+    c.setFillColor(HexColor('#d97706'))
+    c.drawString(50, y, "⚠️ Important Medical Disclaimer")
+    
+    y -= 25
+    c.setFont("Helvetica", 9)
+    c.setFillColor(HexColor('#92400e'))
+    
+    disclaimer_lines = [
+        "This is a risk prediction tool for educational and screening purposes only.",
+        "",
+        "• Results are generated using artificial intelligence and should not be considered as medical diagnosis",
+        "• Always consult qualified healthcare professionals for medical advice and formal testing",
+        "• This analysis is based on fingerprint patterns and statistical correlations",
+        "• Individual health conditions may vary and require professional medical evaluation",
+        "",
+        "For medical concerns, please contact your healthcare provider immediately."
+    ]
+    
+    for line in disclaimer_lines:
+        if line:  # Skip empty lines for spacing
+            c.drawString(70, y, line)
+        y -= 12
+    
+    # Footer
+    c.setFont("Helvetica", 8)
+    c.setFillColor(gray_color)
+    c.drawCentredText(width/2, 50, "Generated by Printalyzer AI Health Analysis System")
+    
+    c.save()
+    buffer.seek(0)
+    return buffer
+

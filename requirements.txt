@@ -34,3 +34,6 @@ scikit-learn==1.5.2
 # Deep Learning for blood group classification
 tensorflow==2.20.0
 opencv-python-headless==4.5.5.64
+
+# PDF generation for QR code downloads
+reportlab==4.2.0
