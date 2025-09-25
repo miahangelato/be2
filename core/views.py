@@ -558,6 +558,179 @@ def submit(
 #         except Exception:
 #             pass
 
+def analyze_blood_donation_eligibility(participant_data):
+    """
+    Analyze blood donation eligibility based on Philippine Red Cross criteria
+    
+    Args:
+        participant_data: Dictionary containing participant information
+        
+    Returns:
+        Dictionary with eligibility status and detailed criteria results
+    """
+    
+    eligibility_results = {
+        "eligible": True,
+        "reasons": [],
+        "criteria": {}
+    }
+    
+    try:
+        # Age criteria: 16-65 years old
+        age = int(participant_data.get('age', 0))
+        if age < 16 or age > 65:
+            eligibility_results["eligible"] = False
+            eligibility_results["reasons"].append(f"Age ({age}) must be between 16-65 years")
+            eligibility_results["criteria"]["age"] = {"status": "fail", "value": age, "requirement": "16-65 years"}
+        else:
+            eligibility_results["criteria"]["age"] = {"status": "pass", "value": age, "requirement": "16-65 years"}
+        
+        # Weight criteria: At least 50 kg
+        weight = float(participant_data.get('weight', 0))
+        if weight < 50:
+            eligibility_results["eligible"] = False
+            eligibility_results["reasons"].append(f"Weight ({weight}kg) must be at least 50kg")
+            eligibility_results["criteria"]["weight"] = {"status": "fail", "value": f"{weight}kg", "requirement": "≥50kg"}
+        else:
+            eligibility_results["criteria"]["weight"] = {"status": "pass", "value": f"{weight}kg", "requirement": "≥50kg"}
+        
+        # Sleep criteria: At least 5 hours
+        sleep_hours = participant_data.get('sleep_hours')
+        if sleep_hours is not None:
+            try:
+                sleep_hours = float(sleep_hours)
+                if sleep_hours < 5:
+                    eligibility_results["eligible"] = False
+                    eligibility_results["reasons"].append(f"Sleep ({sleep_hours}h) must be at least 5 hours")
+                    eligibility_results["criteria"]["sleep"] = {"status": "fail", "value": f"{sleep_hours}h", "requirement": "≥5 hours"}
+                else:
+                    eligibility_results["criteria"]["sleep"] = {"status": "pass", "value": f"{sleep_hours}h", "requirement": "≥5 hours"}
+            except (ValueError, TypeError):
+                eligibility_results["criteria"]["sleep"] = {"status": "unknown", "value": "Not provided", "requirement": "≥5 hours"}
+        else:
+            eligibility_results["criteria"]["sleep"] = {"status": "unknown", "value": "Not provided", "requirement": "≥5 hours"}
+        
+        # Alcohol criteria: No alcohol in last 24h
+        had_alcohol = participant_data.get('had_alcohol_last_24h')
+        if had_alcohol is not None:
+            try:
+                had_alcohol = str(had_alcohol).lower() in ['true', '1', 'yes']
+                if had_alcohol:
+                    eligibility_results["eligible"] = False
+                    eligibility_results["reasons"].append("Had alcohol within last 24 hours")
+                    eligibility_results["criteria"]["alcohol"] = {"status": "fail", "value": "Yes", "requirement": "None in 24h"}
+                else:
+                    eligibility_results["criteria"]["alcohol"] = {"status": "pass", "value": "No", "requirement": "None in 24h"}
+            except:
+                eligibility_results["criteria"]["alcohol"] = {"status": "unknown", "value": "Not provided", "requirement": "None in 24h"}
+        else:
+            eligibility_results["criteria"]["alcohol"] = {"status": "unknown", "value": "Not provided", "requirement": "None in 24h"}
+        
+        # Food criteria: Must have eaten, avoid fatty food
+        ate_before = participant_data.get('ate_before_donation')
+        ate_fatty = participant_data.get('ate_fatty_food')
+        
+        if ate_before is not None:
+            try:
+                ate_before = str(ate_before).lower() in ['true', '1', 'yes']
+                if not ate_before:
+                    eligibility_results["eligible"] = False
+                    eligibility_results["reasons"].append("Must eat before donation")
+                    eligibility_results["criteria"]["food_eaten"] = {"status": "fail", "value": "No", "requirement": "Must eat before"}
+                else:
+                    eligibility_results["criteria"]["food_eaten"] = {"status": "pass", "value": "Yes", "requirement": "Must eat before"}
+            except:
+                eligibility_results["criteria"]["food_eaten"] = {"status": "unknown", "value": "Not provided", "requirement": "Must eat before"}
+        else:
+            eligibility_results["criteria"]["food_eaten"] = {"status": "unknown", "value": "Not provided", "requirement": "Must eat before"}
+            
+        if ate_fatty is not None:
+            try:
+                ate_fatty = str(ate_fatty).lower() in ['true', '1', 'yes']
+                if ate_fatty:
+                    eligibility_results["eligible"] = False
+                    eligibility_results["reasons"].append("Ate fatty food before donation")
+                    eligibility_results["criteria"]["fatty_food"] = {"status": "fail", "value": "Yes", "requirement": "Avoid fatty food"}
+                else:
+                    eligibility_results["criteria"]["fatty_food"] = {"status": "pass", "value": "No", "requirement": "Avoid fatty food"}
+            except:
+                eligibility_results["criteria"]["fatty_food"] = {"status": "unknown", "value": "Not provided", "requirement": "Avoid fatty food"}
+        else:
+            eligibility_results["criteria"]["fatty_food"] = {"status": "unknown", "value": "Not provided", "requirement": "Avoid fatty food"}
+        
+        # Tattoo/Piercing criteria: Recent ones may defer donation
+        recent_tattoo = participant_data.get('recent_tattoo_or_piercing')
+        if recent_tattoo is not None:
+            try:
+                recent_tattoo = str(recent_tattoo).lower() in ['true', '1', 'yes']
+                if recent_tattoo:
+                    eligibility_results["eligible"] = False
+                    eligibility_results["reasons"].append("Recent tattoo/piercing (within 6-12 months)")
+                    eligibility_results["criteria"]["tattoo_piercing"] = {"status": "fail", "value": "Yes", "requirement": "None recent (6-12 months)"}
+                else:
+                    eligibility_results["criteria"]["tattoo_piercing"] = {"status": "pass", "value": "No", "requirement": "None recent (6-12 months)"}
+            except:
+                eligibility_results["criteria"]["tattoo_piercing"] = {"status": "unknown", "value": "Not provided", "requirement": "None recent (6-12 months)"}
+        else:
+            eligibility_results["criteria"]["tattoo_piercing"] = {"status": "unknown", "value": "Not provided", "requirement": "None recent (6-12 months)"}
+        
+        # Chronic condition criteria: Must be controlled
+        has_chronic = participant_data.get('has_chronic_condition')
+        condition_controlled = participant_data.get('condition_controlled')
+        
+        if has_chronic is not None:
+            try:
+                has_chronic = str(has_chronic).lower() in ['true', '1', 'yes']
+                if has_chronic:
+                    if condition_controlled is not None:
+                        try:
+                            condition_controlled = str(condition_controlled).lower() in ['true', '1', 'yes']
+                            if not condition_controlled:
+                                eligibility_results["eligible"] = False
+                                eligibility_results["reasons"].append("Chronic condition not controlled")
+                                eligibility_results["criteria"]["chronic_condition"] = {"status": "fail", "value": "Not controlled", "requirement": "Must be controlled"}
+                            else:
+                                eligibility_results["criteria"]["chronic_condition"] = {"status": "pass", "value": "Controlled", "requirement": "Must be controlled"}
+                        except:
+                            eligibility_results["eligible"] = False
+                            eligibility_results["reasons"].append("Chronic condition control status unknown")
+                            eligibility_results["criteria"]["chronic_condition"] = {"status": "fail", "value": "Unknown control", "requirement": "Must be controlled"}
+                    else:
+                        eligibility_results["eligible"] = False
+                        eligibility_results["reasons"].append("Chronic condition control status not provided")
+                        eligibility_results["criteria"]["chronic_condition"] = {"status": "fail", "value": "Control unknown", "requirement": "Must be controlled"}
+                else:
+                    eligibility_results["criteria"]["chronic_condition"] = {"status": "pass", "value": "None", "requirement": "Must be controlled"}
+            except:
+                eligibility_results["criteria"]["chronic_condition"] = {"status": "unknown", "value": "Not provided", "requirement": "Must be controlled"}
+        else:
+            eligibility_results["criteria"]["chronic_condition"] = {"status": "unknown", "value": "Not provided", "requirement": "Must be controlled"}
+        
+        # Last donation date criteria (optional check)
+        last_donation = participant_data.get('last_donation_date')
+        if last_donation:
+            # Could add logic here to check if enough time has passed since last donation
+            # For now, just record the information
+            eligibility_results["criteria"]["last_donation"] = {"status": "info", "value": last_donation, "requirement": "Check interval"}
+        
+        # Summary
+        eligibility_results["summary"] = {
+            "total_criteria": len([c for c in eligibility_results["criteria"].values() if c["status"] in ["pass", "fail"]]),
+            "passed_criteria": len([c for c in eligibility_results["criteria"].values() if c["status"] == "pass"]),
+            "failed_criteria": len([c for c in eligibility_results["criteria"].values() if c["status"] == "fail"]),
+            "unknown_criteria": len([c for c in eligibility_results["criteria"].values() if c["status"] == "unknown"])
+        }
+        
+    except Exception as e:
+        eligibility_results = {
+            "eligible": False,
+            "error": f"Error analyzing eligibility: {str(e)}",
+            "reasons": ["Unable to complete eligibility analysis"],
+            "criteria": {}
+        }
+    
+    return eligibility_results
+
 
 @api.post("/predict-diabetes/")
 def predict_diabetes(request, participant_id: int = Form(...), consent: bool = Form(True)):
@@ -795,18 +968,36 @@ def generate_pdf_token_direct(request):
         # Generate unique token
         token = str(uuid.uuid4())
         
+        # Prepare participant data for analysis
+        participant_analysis_data = {
+            'id': None,  # No database ID since not saved
+            'age': participant_data.get('age'),
+            'gender': participant_data.get('gender'),
+            'height': participant_data.get('height'),
+            'weight': participant_data.get('weight'),
+            'blood_type': participant_data.get('blood_type'),
+            'willing_to_donate': participant_data.get('willing_to_donate'),
+            'sleep_hours': participant_data.get('sleep_hours'),
+            'had_alcohol_last_24h': participant_data.get('had_alcohol_last_24h'),
+            'ate_before_donation': participant_data.get('ate_before_donation'),
+            'ate_fatty_food': participant_data.get('ate_fatty_food'),
+            'recent_tattoo_or_piercing': participant_data.get('recent_tattoo_or_piercing'),
+            'has_chronic_condition': participant_data.get('has_chronic_condition'),
+            'condition_controlled': participant_data.get('condition_controlled'),
+            'last_donation_date': participant_data.get('last_donation_date'),
+            'created_at': datetime.now().isoformat()
+        }
+        
+        # Analyze blood donation eligibility if willing to donate
+        blood_donation_eligibility = None
+        if participant_data.get('willing_to_donate'):
+            print("🩸 Analyzing blood donation eligibility for non-consenting user...")
+            blood_donation_eligibility = analyze_blood_donation_eligibility(participant_analysis_data)
+            print(f"🩸 Eligibility result: {blood_donation_eligibility.get('eligible', False)}")
+        
         # Store data temporarily (10 minutes)
         pdf_data = {
-            'participant': {
-                'id': None,  # No database ID since not saved
-                'age': participant_data.get('age'),
-                'gender': participant_data.get('gender'),
-                'height': participant_data.get('height'),
-                'weight': participant_data.get('weight'),
-                'blood_type': participant_data.get('blood_type'),
-                'willing_to_donate': participant_data.get('willing_to_donate'),
-                'created_at': datetime.now().isoformat()
-            },
+            'participant': participant_analysis_data,
             'diabetes_result': {
                 'risk': diabetes_result.get('diabetes_risk') or diabetes_result.get('risk'),
                 'confidence': diabetes_result.get('confidence', 0)
@@ -815,6 +1006,7 @@ def generate_pdf_token_direct(request):
                 'predicted_blood_group': blood_group_result.get('predicted_blood_group'),
                 'confidence': blood_group_result.get('confidence', 0)
             },
+            'blood_donation_eligibility': blood_donation_eligibility,
             'fingerprint_count': len(data.get('fingerprints', [])),
             'generated_at': datetime.now().isoformat()
         }
@@ -889,20 +1081,39 @@ def generate_pdf_token(request, participant_id: int = Form(...)):
         token = str(uuid.uuid4())
         print(f"🔑 Generated token: {token}")
         
+        # Prepare participant data for analysis
+        participant_data = {
+            'id': participant.id,
+            'age': participant.age,
+            'gender': participant.gender,
+            'height': participant.height,
+            'weight': participant.weight,
+            'blood_type': participant.blood_type,
+            'willing_to_donate': participant.willing_to_donate,
+            'sleep_hours': participant.sleep_hours,
+            'had_alcohol_last_24h': participant.had_alcohol_last_24h,
+            'ate_before_donation': participant.ate_before_donation,
+            'ate_fatty_food': participant.ate_fatty_food,
+            'recent_tattoo_or_piercing': participant.recent_tattoo_or_piercing,
+            'has_chronic_condition': participant.has_chronic_condition,
+            'condition_controlled': participant.condition_controlled,
+            'last_donation_date': participant.last_donation_date.isoformat() if participant.last_donation_date else None,
+            'created_at': participant.created_at.isoformat() if participant.created_at else None
+        }
+        
+        # Analyze blood donation eligibility if willing to donate
+        blood_donation_eligibility = None
+        if participant.willing_to_donate:
+            print("🩸 Analyzing blood donation eligibility...")
+            blood_donation_eligibility = analyze_blood_donation_eligibility(participant_data)
+            print(f"🩸 Eligibility result: {blood_donation_eligibility.get('eligible', False)}")
+        
         # Store data temporarily (10 minutes)
         pdf_data = {
-            'participant': {
-                'id': participant.id,
-                'age': participant.age,
-                'gender': participant.gender,
-                'height': participant.height,
-                'weight': participant.weight,
-                'blood_type': participant.blood_type,
-                'willing_to_donate': participant.willing_to_donate,
-                'created_at': participant.created_at.isoformat() if participant.created_at else None
-            },
+            'participant': participant_data,
             'diabetes_result': diabetes_result,
             'blood_group_result': blood_group_result,
+            'blood_donation_eligibility': blood_donation_eligibility,
             'fingerprint_count': participant.fingerprints.count(),
             'generated_at': datetime.now().isoformat()
         }
