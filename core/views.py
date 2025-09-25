@@ -1097,8 +1097,7 @@ def generate_pdf_token(request, participant_id: int = Form(...)):
             'recent_tattoo_or_piercing': participant.recent_tattoo_or_piercing,
             'has_chronic_condition': participant.has_chronic_condition,
             'condition_controlled': participant.condition_controlled,
-            'last_donation_date': participant.last_donation_date.isoformat() if participant.last_donation_date else None,
-            'created_at': participant.created_at.isoformat() if participant.created_at else None
+            'last_donation_date': participant.last_donation_date.isoformat() if participant.last_donation_date else None
         }
         
         # Analyze blood donation eligibility if willing to donate

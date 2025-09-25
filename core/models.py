@@ -30,7 +30,6 @@ class Participant(models.Model):
     had_alcohol_last_24h = models.BooleanField(null=True, default=False)
     sleep_hours = models.IntegerField(null=True, blank=True, default=None)
     last_donation_date = models.DateField(null=True, blank=True)
-    created_at = models.DateTimeField(auto_now_add=True)
 
     def check_prc_eligibility(self):
         """Apply Philippine Red Cross blood donation criteria"""
