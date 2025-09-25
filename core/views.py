@@ -957,6 +957,53 @@ def test_cache(request):
     except Exception as e:
         return {"success": False, "error": str(e)}
 
+@api.get("/test-pdf/")
+def test_pdf_generation(request):
+    """Test PDF generation with sample data"""
+    try:
+        # Sample data
+        test_data = {
+            'participant': {
+                'age': 25,
+                'gender': 'Male',
+                'height': 175,
+                'weight': 70,
+                'blood_type': 'A+',
+                'willing_to_donate': True
+            },
+            'diabetes_result': {
+                'risk': 'HEALTHY',
+                'confidence': 0.95
+            },
+            'blood_group_result': {
+                'predicted_blood_group': 'A+',
+                'confidence': 0.92
+            },
+            'fingerprint_count': 10,
+            'generated_at': datetime.now().isoformat()
+        }
+        
+        # Try to generate PDF
+        pdf_buffer, content_type, extension = generate_health_report_pdf(test_data)
+        
+        # Return the PDF directly
+        from django.http import FileResponse
+        response = FileResponse(
+            pdf_buffer,
+            as_attachment=True,
+            filename=f"test_report{extension}",
+            content_type=content_type
+        )
+        return response
+        
+    except Exception as e:
+        import traceback
+        return {
+            "success": False, 
+            "error": str(e),
+            "traceback": traceback.format_exc()
+        }
+
 @api.get("/download-pdf/{token}/")
 def download_pdf(request, token: str):
     """Download PDF using temporary token"""
@@ -970,12 +1017,25 @@ def download_pdf(request, token: str):
         pdf_data = cache.get(cache_key)
         if not pdf_data:
             print(f"❌ No data found in cache for token: {token}")
-            # Let's check what keys exist in cache
+            # Let's check what keys exist in cache and test cache functionality
             try:
                 from django.core.cache import cache as django_cache
                 print(f"🔍 Cache backend: {type(django_cache)}")
-            except:
-                pass
+                
+                # Test if cache is working at all
+                test_key = f"test_{token}"
+                cache.set(test_key, {"test": "value"}, timeout=10)
+                test_result = cache.get(test_key)
+                print(f"🔍 Cache test result: {test_result}")
+                
+                # Try to list any pdf_data keys (if possible)
+                import re
+                if hasattr(django_cache, '_cache'):
+                    print(f"🔍 Cache keys preview: {list(django_cache._cache.keys())[:10] if hasattr(django_cache._cache, 'keys') else 'Cannot list keys'}")
+                    
+            except Exception as cache_test_error:
+                print(f"❌ Cache test error: {cache_test_error}")
+                
             raise Http404("Download link has expired or is invalid")
         
         print(f"✅ Found PDF data in cache: {pdf_data}")
@@ -1030,7 +1090,26 @@ def generate_health_report_pdf_simple(pdf_data):
     """Generate a basic PDF with proper PDF format"""
     import io
     
-    # Create a minimal but valid PDF
+    # Extract values safely
+    age = pdf_data['participant'].get('age', 'Unknown')
+    gender = pdf_data['participant'].get('gender', 'Unknown')
+    height = pdf_data['participant'].get('height', 'Unknown')
+    weight = pdf_data['participant'].get('weight', 'Unknown')
+    blood_type = pdf_data['participant'].get('blood_type', 'Not specified')
+    willing_to_donate = 'Yes' if pdf_data['participant'].get('willing_to_donate') else 'No'
+    
+    predicted_bg = pdf_data.get('blood_group_result', {}).get('predicted_blood_group', 'Unknown')
+    bg_confidence = pdf_data.get('blood_group_result', {}).get('confidence', 0) * 100
+    
+    diabetes_risk = pdf_data.get('diabetes_result', {}).get('risk', 'Unknown')
+    diabetes_confidence = pdf_data.get('diabetes_result', {}).get('confidence', 0) * 100
+    
+    try:
+        gen_date = datetime.fromisoformat(pdf_data['generated_at']).strftime('%B %d, %Y')
+    except:
+        gen_date = 'Unknown'
+    
+    # Create PDF content with actual values
     content = f"""%PDF-1.4
 1 0 obj
 <<
@@ -1061,7 +1140,7 @@ endobj
 
 4 0 obj
 <<
-/Length 1200
+/Length 1500
 >>
 stream
 BT
@@ -1074,29 +1153,29 @@ BT
 0 -40 Td
 (Patient Information:) Tj
 0 -20 Td
-(Age: {pdf_data['participant']['age']} years) Tj
+(Age: {age} years) Tj
 0 -20 Td
-(Gender: {pdf_data['participant']['gender']}) Tj
+(Gender: {gender}) Tj
 0 -20 Td
-(Height: {pdf_data['participant']['height']} cm) Tj
+(Height: {height} cm) Tj
 0 -20 Td
-(Weight: {pdf_data['participant']['weight']} kg) Tj
+(Weight: {weight} kg) Tj
 0 -20 Td
-(Blood Type: {pdf_data['participant'].get('blood_type', 'Not specified')}) Tj
+(Blood Type: {blood_type}) Tj
 0 -20 Td
-(Willing to Donate: {'Yes' if pdf_data['participant']['willing_to_donate'] else 'No'}) Tj
+(Willing to Donate: {willing_to_donate}) Tj
 0 -40 Td
 (Blood Group Prediction:) Tj
 0 -20 Td
-(Predicted: {pdf_data.get('blood_group_result', {}).get('predicted_blood_group', 'Unknown')}) Tj
+(Predicted: {predicted_bg}) Tj
 0 -20 Td
-(Confidence: {pdf_data.get('blood_group_result', {}).get('confidence', 0) * 100:.1f}%) Tj
+(Confidence: {bg_confidence:.1f}%) Tj
 0 -40 Td
 (Diabetes Risk Assessment:) Tj
 0 -20 Td
-(Risk Level: {pdf_data.get('diabetes_result', {}).get('risk', 'Unknown')}) Tj
+(Risk Level: {diabetes_risk}) Tj
 0 -20 Td
-(Confidence: {pdf_data.get('diabetes_result', {}).get('confidence', 0) * 100:.1f}%) Tj
+(Confidence: {diabetes_confidence:.1f}%) Tj
 0 -40 Td
 (IMPORTANT DISCLAIMER:) Tj
 0 -20 Td
@@ -1104,7 +1183,7 @@ BT
 0 -20 Td
 (Consult healthcare professionals for medical advice.) Tj
 0 -40 Td
-(Generated: {datetime.fromisoformat(pdf_data['generated_at']).strftime('%B %d, %Y')}) Tj
+(Generated: {gen_date}) Tj
 ET
 endstream
 endobj
@@ -1124,14 +1203,14 @@ xref
 0000000058 00000 n 
 0000000115 00000 n 
 0000000254 00000 n 
-0000001400 00000 n 
+0000001800 00000 n 
 trailer
 <<
 /Size 6
 /Root 1 0 R
 >>
 startxref
-1478
+1878
 %%EOF"""
 
     buffer = io.BytesIO()
